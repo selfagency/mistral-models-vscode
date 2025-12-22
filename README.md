@@ -35,46 +35,7 @@
 | **Devstral Small 2** | 256k tokens | Compact agentic coding model | Local deployment, efficient coding |
 | **Devstral 2** | 256k tokens | Frontier agentic coding model | Complex software engineering tasks |
 | **Mistral Large 3** | 256k tokens | 675B MoE flagship multimodal | General-purpose, vision, reasoning |
-| **Mistral Medium 3.1** | 128k tokens | Frontier-class multimodal | Balanced performance & cost |
 
-### Model Details
-
-#### 🛠️ Devstral 2 (`devstral-latest`)
-*Released December 2025*
-
-Mistral's frontier code agents model designed for solving software engineering tasks. Features:
-- 256,000 token context window
-- Optimized for multi-file editing and codebase exploration
-- Strong tool calling capabilities for agentic workflows
-- Excels at understanding complex code dependencies
-
-#### 🛠️ Devstral Small 2 (`devstral-small-latest`)
-*Released December 2025*
-
-A compact version optimized for local deployment:
-- 256,000 token context window
-- Efficient enough for consumer-grade hardware
-- Same agentic capabilities in a smaller package
-
-#### 🌟 Mistral Large 3 (`mistral-large-latest`)
-*Released December 2025*
-
-State-of-the-art flagship model with cutting-edge capabilities:
-- 256,000 token context window
-- 675 billion parameters (41B active) as Mixture-of-Experts
-- Multimodal: understands both text and images
-- Apache 2.0 licensed - open for commercial use
-- Strong reasoning, coding, and multilingual support
-
-#### ⚡ Mistral Medium 3.1 (`mistral-medium-latest`)
-*Released August 2025*
-
-Frontier-class model balancing performance and efficiency:
-- 128,000 token context window
-- Multimodal capabilities
-- Ideal for high-complexity tasks
-
----
 
 ## 🚀 Installation
 
