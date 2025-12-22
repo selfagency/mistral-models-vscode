@@ -6,7 +6,9 @@ import {
 	LanguageModelChatMessage,
 	LanguageModelChatMessageRole,
 	LanguageModelChatProvider,
+	LanguageModelChatToolMode,
 	LanguageModelResponsePart,
+	LanguageModelDataPart,
 	LanguageModelTextPart,
 	LanguageModelToolCallPart,
 	LanguageModelToolResultPart,
@@ -85,7 +87,7 @@ function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
 	return {
 		id: model.id,
 		name: model.name,
-		tooltip: `Mistral ${model.name} - ${model.detail}`,
+		tooltip: model.detail ? `Mistral ${model.name} - ${model.detail}` : `Mistral ${model.name}`,
 		family: "mistral",
 		detail: model.detail,
 		maxInputTokens: model.maxInputTokens,
@@ -101,21 +103,24 @@ function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
 /**
  * Message types for Mistral API
  */
-type MistralRole = "system" | "user" | "assistant" | "tool";
+type MistralContent = string | Array<
+	{ type: 'text'; text: string; } |
+	{ type: 'image_url'; imageUrl: string; }
+>;
 
-interface MistralMessage {
-	role: MistralRole;
-	content: string;
-	tool_calls?: Array<{
-		id: string;
-		type: "function";
-		function: {
-			name: string;
-			arguments: string;
-		};
-	}>;
-	tool_call_id?: string;
-}
+type MistralToolCall = {
+	id: string;
+	type: 'function';
+	function: {
+		name: string;
+		arguments: string;
+	};
+};
+
+type MistralMessage =
+	| { role: 'user'; content: MistralContent; }
+	| { role: 'assistant'; content: MistralContent | null; toolCalls?: MistralToolCall[]; }
+	| { role: 'tool'; content: string | null; toolCallId: string; name?: string; };
 
 /**
  * Mistral Chat Model Provider
@@ -223,54 +228,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 			return;
 		}
 
-		// Convert VS Code messages to Mistral format
-		const mistralMessages: MistralMessage[] = messages.map(msg => {
-			const textContent: string[] = [];
-			const toolCalls: MistralMessage['tool_calls'] = [];
-
-			for (const part of msg.content) {
-				if (part instanceof LanguageModelTextPart) {
-					textContent.push(part.value);
-				} else if (part instanceof LanguageModelToolCallPart) {
-					toolCalls.push({
-						id: part.callId,
-						type: "function",
-						function: {
-							name: part.name,
-							arguments: JSON.stringify(part.input)
-						}
-					});
-				} else if (part instanceof LanguageModelToolResultPart) {
-					// Tool results should be in tool messages
-					const resultContent = part.content
-						.filter(resultPart => resultPart instanceof LanguageModelTextPart)
-						.map(resultPart => (resultPart as LanguageModelTextPart).value)
-						.join('');
-
-					return {
-						role: "tool" as MistralRole,
-						content: resultContent,
-						tool_call_id: part.callId
-					};
-				}
-			}
-
-			const messageContent = textContent.join('');
-
-			// Return message with tool calls if present
-			if (toolCalls.length > 0) {
-				return {
-					role: "assistant" as MistralRole,
-					content: messageContent || '',
-					tool_calls: toolCalls
-				};
-			}
-
-			return {
-				role: toMistralRole(msg.role),
-				content: messageContent
-			};
-		}).filter(msg => (msg.content !== null && msg.content.length > 0) || msg.role === "tool" || msg.tool_calls);
+		// Convert VS Code messages to Mistral format.
+		// Important: a single VS Code message can include multiple tool results. Those must become
+		// separate `role:"tool"` messages instead of replacing the whole message.
+		const mistralMessages = this.toMistralMessages(messages);
 
 		// Convert VS Code tools to Mistral format
 		const mistralTools = options.tools?.map(tool => ({
@@ -282,18 +243,38 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 			}
 		}));
 
+		const shouldSendTools = mistralTools && mistralTools.length > 0;
+		const toolChoice = shouldSendTools
+			? (options.toolMode === LanguageModelChatToolMode.Required ? 'any' : 'auto')
+			: undefined;
+		const parallelToolCalls = shouldSendTools ? (foundModel.supportsParallelToolCalls ?? false) : undefined;
+
+		// Allow VS Code modelOptions to override some request parameters.
+		const modelOptions = (options.modelOptions ?? {}) as Record<string, unknown>;
+		const temperature = typeof modelOptions.temperature === 'number' ? modelOptions.temperature : (foundModel.temperature ?? 0.7);
+		const topP = typeof modelOptions.topP === 'number' ? modelOptions.topP : (foundModel.top_p ?? undefined);
+		const safePrompt = typeof modelOptions.safePrompt === 'boolean' ? modelOptions.safePrompt : undefined;
+
 		try {
 			// Create chat completion request with streaming
 			const stream = await this.client.chat.stream({
 				model: model.id,
 				messages: mistralMessages,
-				maxTokens: foundModel.defaultCompletionTokens,
-				temperature: foundModel.temperature ?? 0.7,
-				topP: foundModel.top_p ?? undefined,
-				tools: mistralTools && mistralTools.length > 0 && foundModel.toolCalling ? mistralTools : undefined
+				maxTokens: Math.min(foundModel.defaultCompletionTokens, foundModel.maxOutputTokens),
+				temperature,
+				topP,
+				safePrompt,
+				tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
+				toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
+				parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
+				stream: true
 			});
 
 			// Process streaming response
+			// Tool call deltas often arrive in multiple chunks. Buffer them until we have valid JSON.
+			const toolCallBuffers = new Map<string, { name?: string; argsText: string; }>();
+			const emittedToolCalls = new Set<string>();
+
 			for await (const event of stream) {
 				// Check if the operation was cancelled
 				if (token.isCancellationRequested) {
@@ -317,24 +298,72 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 						}
 					}
 
-					// Handle tool calls
-					if (delta?.toolCalls) {
-						for (const toolCall of delta.toolCalls) {
-							if (toolCall.function?.name && toolCall.function?.arguments && toolCall.id) {
+					// Handle tool calls (support both `toolCalls` and `tool_calls` naming depending on SDK version)
+					type ToolCallDelta = {
+						id?: string;
+						function?: {
+							name?: string;
+							arguments?: string | Record<string, unknown>;
+						};
+					};
+					const deltaToolCalls = (delta as unknown as { toolCalls?: ToolCallDelta[]; tool_calls?: ToolCallDelta[]; }).toolCalls
+						?? (delta as unknown as { toolCalls?: ToolCallDelta[]; tool_calls?: ToolCallDelta[]; }).tool_calls;
+					if (deltaToolCalls) {
+						for (const toolCall of deltaToolCalls) {
+							const id: string | undefined = toolCall.id;
+							if (!id) {
+								continue;
+							}
+
+							const buf = toolCallBuffers.get(id) ?? { argsText: '' };
+							if (toolCall.function?.name) {
+								buf.name = toolCall.function.name;
+							}
+
+							const args = toolCall.function?.arguments;
+							if (typeof args === 'string') {
+								buf.argsText += args;
+							} else if (args && typeof args === 'object') {
+								// Some SDK versions provide the parsed object already
+								buf.argsText = JSON.stringify(args);
+							}
+
+							toolCallBuffers.set(id, buf);
+
+							if (!emittedToolCalls.has(id) && buf.name && buf.argsText) {
 								try {
-									// arguments can be string or object
-									const parsedArgs = typeof toolCall.function.arguments === 'string'
-										? JSON.parse(toolCall.function.arguments)
-										: toolCall.function.arguments;
-									progress.report(new LanguageModelToolCallPart(
-										toolCall.id,
-										toolCall.function.name,
-										parsedArgs
-									));
-								} catch (e) {
-									console.warn('Failed to parse tool call arguments:', e);
+									const parsedArgs: unknown = JSON.parse(buf.argsText);
+									const parsedArgsObj: Record<string, unknown> = (parsedArgs && typeof parsedArgs === 'object')
+										? (parsedArgs as Record<string, unknown>)
+										: { value: parsedArgs };
+									progress.report(new LanguageModelToolCallPart(id, buf.name, parsedArgsObj));
+									emittedToolCalls.add(id);
+								} catch {
+									// Not valid JSON yet; keep buffering.
 								}
 							}
+						}
+					}
+
+					// If we are at a finish boundary, flush any remaining tool calls with best-effort parsing.
+					const finishReason: string | undefined = (choice as unknown as { finishReason?: string; finish_reason?: string; }).finishReason
+						?? (choice as unknown as { finishReason?: string; finish_reason?: string; }).finish_reason;
+					if (finishReason === 'tool_calls' || finishReason === 'stop') {
+						for (const [id, buf] of toolCallBuffers) {
+							if (emittedToolCalls.has(id) || !buf.name) {
+								continue;
+							}
+							let parsedArgs: unknown;
+							try {
+								parsedArgs = buf.argsText ? JSON.parse(buf.argsText) : {};
+							} catch {
+								parsedArgs = { raw: buf.argsText };
+							}
+							const parsedArgsObj: Record<string, unknown> = (parsedArgs && typeof parsedArgs === 'object')
+								? (parsedArgs as Record<string, unknown>)
+								: { value: parsedArgs };
+							progress.report(new LanguageModelToolCallPart(id, buf.name, parsedArgsObj));
+							emittedToolCalls.add(id);
 						}
 					}
 				}
@@ -346,6 +375,119 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 	}
 
 	/**
+	 * Convert VS Code chat messages into Mistral Chat Completion messages.
+	 *
+	 * Key rules (mirrors OpenAI/Mistral constraints):
+	 * - Assistant messages MUST have either non-empty content OR tool_calls.
+	 * - Tool results MUST be sent as role="tool" messages with tool_call_id.
+	 */
+	private toMistralMessages(messages: readonly LanguageModelChatMessage[]): MistralMessage[] {
+		const out: MistralMessage[] = [];
+		const toolNameByCallId = new Map<string, string>();
+
+		for (const msg of messages) {
+			const role = toMistralRole(msg.role);
+			const textParts: string[] = [];
+			const imageParts: Array<{ mimeType: string; data: Uint8Array; }> = [];
+			const toolCalls: MistralToolCall[] = [];
+			const toolResults: Array<{ callId: string; content: string; }> = [];
+
+			for (const part of msg.content) {
+				if (part instanceof LanguageModelTextPart) {
+					textParts.push(part.value);
+					continue;
+				}
+
+				if (part instanceof LanguageModelDataPart) {
+					// Only handle images. For any other data parts, stringify as text.
+					if (part.mimeType?.startsWith('image/')) {
+						imageParts.push({ mimeType: part.mimeType, data: part.data });
+					} else {
+						textParts.push(`[data:${part.mimeType}]`);
+					}
+					continue;
+				}
+
+				if (part instanceof LanguageModelToolCallPart) {
+					toolNameByCallId.set(part.callId, part.name);
+					toolCalls.push({
+						id: part.callId,
+						type: 'function',
+						function: {
+							name: part.name,
+							arguments: JSON.stringify(part.input ?? {})
+						}
+					});
+					continue;
+				}
+
+				if (part instanceof LanguageModelToolResultPart) {
+					const resultText = part.content
+						.filter(p => p instanceof LanguageModelTextPart)
+						.map(p => (p as LanguageModelTextPart).value)
+						.join('');
+					toolResults.push({
+						callId: part.callId,
+						content: resultText && resultText.length > 0 ? resultText : JSON.stringify(part.content)
+					});
+					continue;
+				}
+			}
+
+			const content = textParts.join('');
+			const hasContent = content.length > 0;
+			const hasToolCalls = toolCalls.length > 0;
+			const hasImages = imageParts.length > 0;
+
+			const canSendImages = hasImages;
+			let messageContent: MistralMessage['content'] | undefined = undefined;
+			if (canSendImages) {
+				// Mistral expects a chunk-array for multimodal messages.
+				const chunks: Array<{ type: 'text'; text: string; } | { type: 'image_url'; imageUrl: string; }> = [];
+				if (hasContent) {
+					chunks.push({ type: 'text', text: content });
+				}
+				for (const img of imageParts) {
+					const base64 = Buffer.from(img.data).toString('base64');
+					chunks.push({ type: 'image_url', imageUrl: `data:${img.mimeType};base64,${base64}` });
+				}
+				messageContent = chunks;
+			} else if (hasContent) {
+				messageContent = content;
+			}
+
+			// Only include non-empty user/system messages.
+			// Include assistant messages if they have content OR tool calls.
+			if (role === 'assistant') {
+				if (hasContent || hasToolCalls) {
+					out.push({
+						role,
+						// If this assistant message is only tool calls, prefer `null` content (matches SDK schema).
+						content: messageContent ?? (hasToolCalls ? null : ''),
+						toolCalls: hasToolCalls ? toolCalls : undefined
+					});
+				}
+			} else {
+				if (messageContent !== undefined) {
+					out.push({ role: 'user', content: messageContent });
+				}
+			}
+
+			// Tool result messages come after the message that carried them.
+			for (const tr of toolResults) {
+				out.push({
+					role: 'tool',
+					content: tr.content,
+					toolCallId: tr.callId,
+					name: toolNameByCallId.get(tr.callId)
+				});
+			}
+		}
+
+		return out;
+	}
+
+	/**
 	 * Provide token count for text or messages
 	 */
 	async provideTokenCount(
@@ -353,8 +495,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 		text: string | LanguageModelChatMessage,
 		_token: CancellationToken
 	): Promise<number> {
+		// Keep a cached encoding instance; do not free it per-call.
+		// (Freeing and reusing can cause use-after-free issues.)
 		if (!this.tokenizer) {
-			this.tokenizer = get_encoding("cl100k_base");
+			this.tokenizer = get_encoding('cl100k_base');
 		}
 
 		let textContent = '';
@@ -383,7 +527,6 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 		}
 
 		const tokens = this.tokenizer.encode(textContent);
-		this.tokenizer.free(); // Free associated memory
 		return tokens.length;
 	}
 }
@@ -391,7 +534,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 /**
  * Convert VS Code message role to Mistral role
  */
-function toMistralRole(role: LanguageModelChatMessageRole): MistralRole {
+function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' {
 	switch (role) {
 		case LanguageModelChatMessageRole.User:
 			return 'user';

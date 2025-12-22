@@ -10,7 +10,7 @@
 		"type": "git",
 		"url": "https://github.com/OEvortex/vscode-mistral-copilot-chat"
 	},
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"engines": {
 		"vscode": "^1.104.0"
 	},
@@ -28,7 +28,9 @@
 		"coding",
 		"code assistant"
 	],
-	"activationEvents": [],
+	"activationEvents": [
+		"onLanguageModelChatProvider:mistral"
+	],
 	"contributes": {
 		"languageModelChatProviders": [
 			{
@@ -40,8 +42,7 @@
 		"commands": [
 			{
 				"command": "mistral-chat.manageApiKey",
-				"title": "Mistral: Manage API Key",
-				"enablement": "false"
+				"title": "Mistral: Manage API Key"
 			}
 		]
 	},
