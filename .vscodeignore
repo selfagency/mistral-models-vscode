@@ -1,0 +1,9 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+tsconfig.json
+esbuild.js
+*.map
+node_modules/**
+!node_modules/tiktoken/tiktoken_bg.wasm
