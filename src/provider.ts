@@ -55,7 +55,7 @@ const MISTRAL_MODELS: MistralModel[] = [
 		defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
 		toolCalling: true,
 		supportsParallelToolCalls: true,
-		supportsVision: false
+		supportsVision: true
 	},
 	{
 		id: "devstral-latest",
@@ -129,8 +129,54 @@ type MistralMessage =
 export class MistralChatModelProvider implements LanguageModelChatProvider {
 	private client: Mistral | null = null;
 	private tokenizer: Tiktoken | null = null;
+	// Mapping from VS Code tool call IDs to Mistral tool call IDs
+	private toolCallIdMapping = new Map<string, string>();
+	// Mapping from Mistral tool call IDs to VS Code tool call IDs
+	private reverseToolCallIdMapping = new Map<string, string>();
 
 	constructor(private readonly context: ExtensionContext) { }
+
+	/**
+	 * Generate a valid VS Code tool call ID (alphanumeric, exactly 9 characters)
+	 */
+	private generateToolCallId(): string {
+		const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+		let id = '';
+		for (let i = 0; i < 9; i++) {
+			id += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+		return id;
+	}
+
+	/**
+	 * Get or create a VS Code-compatible tool call ID from a Mistral tool call ID
+	 */
+	private getOrCreateVsCodeToolCallId(mistralId: string): string {
+		// Check if we already have a mapping for this Mistral ID
+		if (this.reverseToolCallIdMapping.has(mistralId)) {
+			return this.reverseToolCallIdMapping.get(mistralId)!;
+		}
+		// Create a new mapping
+		const vsCodeId = this.generateToolCallId();
+		this.toolCallIdMapping.set(vsCodeId, mistralId);
+		this.reverseToolCallIdMapping.set(mistralId, vsCodeId);
+		return vsCodeId;
+	}
+
+	/**
+	 * Get the original Mistral tool call ID from a VS Code tool call ID
+	 */
+	private getMistralToolCallId(vsCodeId: string): string | undefined {
+		return this.toolCallIdMapping.get(vsCodeId);
+	}
+
+	/**
+	 * Clear tool call ID mappings (call at the start of each chat request)
+	 */
+	private clearToolCallIdMappings(): void {
+		this.toolCallIdMapping.clear();
+		this.reverseToolCallIdMapping.clear();
+	}
 
 	/**
 	 * Prompts the user to enter their Mistral API key and stores it securely.
@@ -215,6 +261,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 		progress: Progress<LanguageModelResponsePart>,
 		token: CancellationToken
 	): Promise<void> {
+		// Clear tool call ID mappings for this new request
+		this.clearToolCallIdMappings();
+
 		// Check if client is initialized
 		if (!this.client) {
 			progress.report(new LanguageModelTextPart("Please add your Mistral API key to use Mistral AI."));
@@ -310,12 +359,15 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 						?? (delta as unknown as { toolCalls?: ToolCallDelta[]; tool_calls?: ToolCallDelta[]; }).tool_calls;
 					if (deltaToolCalls) {
 						for (const toolCall of deltaToolCalls) {
-							const id: string | undefined = toolCall.id;
-							if (!id) {
+							const mistralId: string | undefined = toolCall.id;
+							if (!mistralId) {
 								continue;
 							}
 
-							const buf = toolCallBuffers.get(id) ?? { argsText: '' };
+							// Convert Mistral tool call ID to VS Code-compatible ID
+							const vsCodeId = this.getOrCreateVsCodeToolCallId(mistralId);
+
+							const buf = toolCallBuffers.get(vsCodeId) ?? { argsText: '' };
 							if (toolCall.function?.name) {
 								buf.name = toolCall.function.name;
 							}
@@ -328,16 +380,16 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 								buf.argsText = JSON.stringify(args);
 							}
 
-							toolCallBuffers.set(id, buf);
+							toolCallBuffers.set(vsCodeId, buf);
 
-							if (!emittedToolCalls.has(id) && buf.name && buf.argsText) {
+							if (!emittedToolCalls.has(vsCodeId) && buf.name && buf.argsText) {
 								try {
 									const parsedArgs: unknown = JSON.parse(buf.argsText);
 									const parsedArgsObj: Record<string, unknown> = (parsedArgs && typeof parsedArgs === 'object')
 										? (parsedArgs as Record<string, unknown>)
 										: { value: parsedArgs };
-									progress.report(new LanguageModelToolCallPart(id, buf.name, parsedArgsObj));
-									emittedToolCalls.add(id);
+									progress.report(new LanguageModelToolCallPart(vsCodeId, buf.name, parsedArgsObj));
+									emittedToolCalls.add(vsCodeId);
 								} catch {
 									// Not valid JSON yet; keep buffering.
 								}
@@ -349,8 +401,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 					const finishReason: string | undefined = (choice as unknown as { finishReason?: string; finish_reason?: string; }).finishReason
 						?? (choice as unknown as { finishReason?: string; finish_reason?: string; }).finish_reason;
 					if (finishReason === 'tool_calls' || finishReason === 'stop') {
-						for (const [id, buf] of toolCallBuffers) {
-							if (emittedToolCalls.has(id) || !buf.name) {
+						for (const [vsCodeId, buf] of toolCallBuffers) {
+							if (emittedToolCalls.has(vsCodeId) || !buf.name) {
 								continue;
 							}
 							let parsedArgs: unknown;
@@ -362,8 +414,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 							const parsedArgsObj: Record<string, unknown> = (parsedArgs && typeof parsedArgs === 'object')
 								? (parsedArgs as Record<string, unknown>)
 								: { value: parsedArgs };
-							progress.report(new LanguageModelToolCallPart(id, buf.name, parsedArgsObj));
-							emittedToolCalls.add(id);
+							progress.report(new LanguageModelToolCallPart(vsCodeId, buf.name, parsedArgsObj));
+							emittedToolCalls.add(vsCodeId);
 						}
 					}
 				}
@@ -409,9 +461,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 				}
 
 				if (part instanceof LanguageModelToolCallPart) {
-					toolNameByCallId.set(part.callId, part.name);
+					// Map VS Code tool call ID to Mistral tool call ID
+					const mistralId = this.getMistralToolCallId(part.callId) ?? part.callId;
+					toolNameByCallId.set(mistralId, part.name);
 					toolCalls.push({
-						id: part.callId,
+						id: mistralId,
 						type: 'function',
 						function: {
 							name: part.name,
@@ -422,12 +476,14 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 				}
 
 				if (part instanceof LanguageModelToolResultPart) {
+					// Map VS Code tool call ID to Mistral tool call ID
+					const mistralId = this.getMistralToolCallId(part.callId) ?? part.callId;
 					const resultText = part.content
 						.filter(p => p instanceof LanguageModelTextPart)
 						.map(p => (p as LanguageModelTextPart).value)
 						.join('');
 					toolResults.push({
-						callId: part.callId,
+						callId: mistralId,
 						content: resultText && resultText.length > 0 ? resultText : JSON.stringify(part.content)
 					});
 					continue;

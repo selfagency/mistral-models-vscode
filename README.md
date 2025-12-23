@@ -111,16 +111,6 @@ Write unit tests for the selected code
 - [API Reference](https://docs.mistral.ai/api/)
 
 ---
-## 📝 Changelog
-
-### 0.1.0 (December 2025)
-- Initial release with Devstral 2 and Devstral Small 2 models
-- Added Mistral Large 3
-- Implemented streaming chat completions
-- Added tool calling support
-- Secured API key storage
-
----
 ## 📄 License
 
 MIT License - See [LICENSE](LICENSE) for details.
