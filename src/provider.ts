@@ -462,7 +462,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
 				if (part instanceof LanguageModelToolCallPart) {
 					// Map VS Code tool call ID to Mistral tool call ID
-					const mistralId = this.getMistralToolCallId(part.callId) ?? part.callId;
+					// If no mapping exists, generate a valid 9-char alphanumeric ID
+					let mistralId = this.getMistralToolCallId(part.callId);
+					if (!mistralId) {
+						mistralId = this.generateToolCallId();
+						this.toolCallIdMapping.set(mistralId, part.callId);
+						this.reverseToolCallIdMapping.set(part.callId, mistralId);
+					}
 					toolNameByCallId.set(mistralId, part.name);
 					toolCalls.push({
 						id: mistralId,
@@ -477,7 +483,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
 				if (part instanceof LanguageModelToolResultPart) {
 					// Map VS Code tool call ID to Mistral tool call ID
-					const mistralId = this.getMistralToolCallId(part.callId) ?? part.callId;
+					// If no mapping exists, generate a valid 9-char alphanumeric ID
+					let mistralId = this.getMistralToolCallId(part.callId);
+					if (!mistralId) {
+						mistralId = this.generateToolCallId();
+						this.toolCallIdMapping.set(mistralId, part.callId);
+						this.reverseToolCallIdMapping.set(part.callId, mistralId);
+					}
 					const resultText = part.content
 						.filter(p => p instanceof LanguageModelTextPart)
 						.map(p => (p as LanguageModelTextPart).value)
