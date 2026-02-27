@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:tsup.egoist.dev)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
