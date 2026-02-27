@@ -250,6 +250,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
   });
 
   it('returns empty array and does not throw on API error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockList = vi.fn().mockRejectedValue(new Error('network error'));
     (provider as any).client = { models: { list: mockList } };
 
