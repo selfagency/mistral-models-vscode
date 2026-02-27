@@ -10,9 +10,9 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": "$tsc",
+            "problemMatcher": [],
             "presentation": {
-                "reveal": "silent"
+                "reveal": "always"
             }
         },
         {
@@ -29,8 +29,8 @@
                 },
                 "background": {
                     "activeOnStart": true,
-                    "beginsPattern": "^CLI Building",
-                    "endsPattern": "^CLI Watching for changes"
+                    "beginsPattern": "^CJS Build start",
+                    "endsPattern": "^CJS .* Build success"
                 }
             },
             "presentation": {
