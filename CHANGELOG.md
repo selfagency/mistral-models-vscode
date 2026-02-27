@@ -8,20 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - 2025-12-31
 
 ### Fixed
+
 - Fixed API error with tool call IDs containing underscores - generate valid 9-character alphanumeric IDs when VS Code tool call IDs don't have an existing mapping
 
 ## [0.1.2] - 2025-12-23
 
 ### Added
+
 - Vision support for Devstral Small 2 model - can now process and analyze images
 - Tool call ID mapping system to ensure compatibility with VS Code's Language Model API
 
 ### Fixed
+
 - Fixed tool call ID validation error - Mistral API returns IDs like `call_70312205` which don't meet VS Code's requirements for alphanumeric 9-character IDs. Now properly maps between Mistral and VS Code ID formats.
 
 ## [0.1.1] - Previous Release
 
 ### Features
+
 - Integration with Mistral AI models including Devstral, Mistral Large
 - GitHub Copilot Chat compatibility
 - Tool calling support

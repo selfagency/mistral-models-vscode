@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:tsup.egoist.dev)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.mistral.ai)",
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(git add docs/plans/2026-02-27-unit-tests-design.md)",
+      "Bash(git commit:*)",
+      "Bash(git add docs/plans/2026-02-27-unit-tests.md)",
+      "Bash(pnpm vitest run)",
+      "Bash(git add vitest.config.ts)",
+      "Bash(git add src/test/vscode.mock.ts)",
+      "Bash(pnpm vitest run src/provider.test.ts)",
+      "Bash(git add src/provider.ts src/provider.test.ts src/test/vscode.mock.ts)",
+      "Bash(pnpm vitest run src/extension.test.ts)",
+      "Bash(git add src/extension.test.ts)",
+      "Bash(pnpm check-types)",
+      "Bash(git add src/provider.test.ts)"
     ]
   }
 }

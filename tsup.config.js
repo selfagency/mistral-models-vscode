@@ -1,6 +1,6 @@
-import { defineConfig } from 'tsup'
 import fs from 'node:fs'
 import path from 'node:path'
+import { defineConfig } from 'tsup'
 
 const production = process.env.NODE_ENV === 'production'
 
@@ -28,7 +28,7 @@ export default defineConfig({
               fs.copyFileSync(sourcePath, destPath)
               console.log('Copied tiktoken_bg.wasm to dist/')
             } catch (err) {
-              console.warn('Failed to copy tiktoken_bg.wasm:', (err as Error).message)
+              console.warn('Failed to copy tiktoken_bg.wasm:', err.message)
             }
           }
         })

@@ -44,6 +44,12 @@
 		"watch": "pnpm-run-all -p watch:*",
 		"prepare": "husky"
 	},
+	"lint-staged": {
+		"src/**/*.ts": [
+			"oxlint --fix",
+			"oxfmt --write"
+		]
+	},
 	"contributes": {
 		"commands": [
 			{

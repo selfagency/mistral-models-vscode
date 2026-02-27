@@ -1,4 +1,7 @@
 {
+	"include": [
+		"src/**/*.ts"
+	],
 	"compilerOptions": {
 		"module": "Node16",
 		"target": "ES2024",
