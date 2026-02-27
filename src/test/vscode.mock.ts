@@ -1,5 +1,22 @@
 import { vi } from 'vitest';
 
+export interface LanguageModelChatInformation {
+  id: string;
+  name: string;
+  family?: string;
+  version?: string;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  detail?: string;
+  tooltip?: string;
+  capabilities?: {
+    toolCalling?: boolean;
+    imageInput?: boolean;
+  };
+}
+
+export interface LanguageModelChatProvider {}
+
 export enum LanguageModelChatMessageRole {
   User = 1,
   Assistant = 2,

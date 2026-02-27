@@ -22,7 +22,7 @@ import {
 /**
  * Mistral model configuration
  */
-interface MistralModel {
+export interface MistralModel {
   id: string;
   name: string;
   detail?: string;
@@ -38,52 +38,23 @@ interface MistralModel {
 
 // Default completion tokens for rate limiting optimization
 const DEFAULT_COMPLETION_TOKENS = 65536;
+const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
 
 /**
- * Mistral Models - Updated December 2025
- *
- * Devstral models: Optimized for agentic coding and software engineering tasks
- * Mistral Large/Medium: General-purpose flagship models
+ * Prettify a model ID into a display name when the API doesn't provide one.
+ * e.g. "mistral-large-latest" → "Mistral Large Latest"
  */
-const MISTRAL_MODELS: MistralModel[] = [
-  // === Devstral Models (Code-Optimized) ===
-  {
-    id: 'devstral-small-latest',
-    name: 'Devstral Small 2',
-    maxInputTokens: 256000,
-    maxOutputTokens: 65536,
-    defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
-    toolCalling: true,
-    supportsParallelToolCalls: true,
-    supportsVision: true,
-  },
-  {
-    id: 'devstral-latest',
-    name: 'Devstral 2',
-    maxInputTokens: 256000,
-    maxOutputTokens: 65536,
-    defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
-    toolCalling: true,
-    supportsParallelToolCalls: true,
-    supportsVision: false,
-  },
-  // === Flagship General-Purpose Models ===
-  {
-    id: 'mistral-large-latest',
-    name: 'Mistral Large 3',
-    maxInputTokens: 256000,
-    maxOutputTokens: 16384,
-    defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
-    toolCalling: true,
-    supportsParallelToolCalls: true,
-    supportsVision: true,
-  },
-];
+export function formatModelName(id: string): string {
+  return id
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 /**
  * Get chat model information for VS Code Language Model API
  */
-function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
+export function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
   return {
     id: model.id,
     name: model.name,
@@ -103,9 +74,9 @@ function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
 /**
  * Message types for Mistral API
  */
-type MistralContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; imageUrl: string }>;
+export type MistralContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; imageUrl: string }>;
 
-type MistralToolCall = {
+export type MistralToolCall = {
   id: string;
   type: 'function';
   function: {
@@ -114,7 +85,7 @@ type MistralToolCall = {
   };
 };
 
-type MistralMessage =
+export type MistralMessage =
   | { role: 'user'; content: MistralContent }
   | { role: 'assistant'; content: MistralContent | null; toolCalls?: MistralToolCall[] }
   | { role: 'tool'; content: string | null; toolCallId: string; name?: string };
@@ -126,6 +97,7 @@ type MistralMessage =
 export class MistralChatModelProvider implements LanguageModelChatProvider {
   private client: Mistral | null = null;
   private tokenizer: Tiktoken | null = null;
+  private fetchedModels: MistralModel[] | null = null;
   // Mapping from VS Code tool call IDs to Mistral tool call IDs
   private toolCallIdMapping = new Map<string, string>();
   // Mapping from Mistral tool call IDs to VS Code tool call IDs
@@ -136,7 +108,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   /**
    * Generate a valid VS Code tool call ID (alphanumeric, exactly 9 characters)
    */
-  private generateToolCallId(): string {
+  public generateToolCallId(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let id = '';
     for (let i = 0; i < 9; i++) {
@@ -148,7 +120,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   /**
    * Get or create a VS Code-compatible tool call ID from a Mistral tool call ID
    */
-  private getOrCreateVsCodeToolCallId(mistralId: string): string {
+  public getOrCreateVsCodeToolCallId(mistralId: string): string {
     // Check if we already have a mapping for this Mistral ID
     if (this.reverseToolCallIdMapping.has(mistralId)) {
       return this.reverseToolCallIdMapping.get(mistralId)!;
@@ -163,14 +135,50 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   /**
    * Get the original Mistral tool call ID from a VS Code tool call ID
    */
-  private getMistralToolCallId(vsCodeId: string): string | undefined {
+  public getMistralToolCallId(vsCodeId: string): string | undefined {
     return this.toolCallIdMapping.get(vsCodeId);
+  }
+
+  /**
+   * Fetch available chat models from the Mistral API and cache the result.
+   * Returns an empty array if the client is not initialized or the request fails.
+   */
+  public async fetchModels(): Promise<MistralModel[]> {
+    if (this.fetchedModels !== null) {
+      return this.fetchedModels;
+    }
+
+    if (!this.client) {
+      return [];
+    }
+
+    try {
+      const response = await this.client.models.list();
+      this.fetchedModels = (response.data ?? [])
+        .filter(m => m.capabilities?.completionChat)
+        .map(m => ({
+          id: m.id,
+          name: m.name ?? formatModelName(m.id),
+          detail: m.description ?? undefined,
+          maxInputTokens: m.maxContextLength ?? 32768,
+          maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+          defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
+          toolCalling: m.capabilities?.functionCalling ?? false,
+          supportsParallelToolCalls: m.capabilities?.functionCalling ?? false,
+          supportsVision: m.capabilities?.vision ?? false,
+          temperature: m.defaultModelTemperature ?? undefined,
+        }));
+      return this.fetchedModels;
+    } catch (error) {
+      console.error('Failed to fetch Mistral models:', error);
+      return [];
+    }
   }
 
   /**
    * Clear tool call ID mappings (call at the start of each chat request)
    */
-  private clearToolCallIdMappings(): void {
+  public clearToolCallIdMappings(): void {
     this.toolCallIdMapping.clear();
     this.reverseToolCallIdMapping.clear();
   }
@@ -203,9 +211,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
 
     void this.context.secrets.store('MISTRAL_API_KEY', apiKey);
-    this.client = new Mistral({
-      apiKey: apiKey,
-    });
+    this.client = new Mistral({ apiKey });
+    this.fetchedModels = null;
 
     return apiKey;
   }
@@ -245,7 +252,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       return [];
     }
 
-    return MISTRAL_MODELS.map(model => getChatModelInfo(model));
+    const models = await this.fetchModels();
+    return models.map(model => getChatModelInfo(model));
   }
 
   /**
@@ -267,12 +275,18 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       return;
     }
 
-    // Find the model in our list
-    const foundModel = MISTRAL_MODELS.find(m => m.id === model.id);
-    if (!foundModel) {
-      progress.report(new LanguageModelTextPart(`Model ${model.id} not found.`));
-      return;
-    }
+    // Find the model in our fetched list to get capability details
+    const models = await this.fetchModels();
+    const foundModel = models.find(m => m.id === model.id) ?? {
+      id: model.id,
+      name: model.name,
+      maxInputTokens: model.maxInputTokens,
+      maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+      defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
+      toolCalling: true,
+      supportsParallelToolCalls: false,
+      supportsVision: false,
+    };
 
     // Convert VS Code messages to Mistral format.
     // Important: a single VS Code message can include multiple tool results. Those must become
@@ -316,7 +330,6 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
         toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
         parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
-        stream: true,
       });
 
       // Process streaming response
@@ -348,21 +361,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
             }
           }
 
-          // Handle tool calls (support both `toolCalls` and `tool_calls` naming depending on SDK version)
-          type ToolCallDelta = {
-            id?: string;
-            function?: {
-              name?: string;
-              arguments?: string | Record<string, unknown>;
-            };
-          };
-          const deltaToolCalls =
-            (delta as unknown as { toolCalls?: ToolCallDelta[]; tool_calls?: ToolCallDelta[] }).toolCalls ??
-            (delta as unknown as { toolCalls?: ToolCallDelta[]; tool_calls?: ToolCallDelta[] }).tool_calls;
+          // Handle tool calls. The SDK normalizes tool_calls -> toolCalls via its inbound Zod schema.
+          const deltaToolCalls = delta.toolCalls;
           if (deltaToolCalls) {
             for (const toolCall of deltaToolCalls) {
-              const mistralId: string | undefined = toolCall.id;
-              if (!mistralId) {
+              // The SDK defaults a missing id to the sentinel string "null" — skip those too.
+              const mistralId = toolCall.id;
+              if (!mistralId || mistralId === 'null') {
                 continue;
               }
 
@@ -401,9 +406,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           }
 
           // If we are at a finish boundary, flush any remaining tool calls with best-effort parsing.
-          const finishReason: string | undefined =
-            (choice as unknown as { finishReason?: string; finish_reason?: string }).finishReason ??
-            (choice as unknown as { finishReason?: string; finish_reason?: string }).finish_reason;
+          // The SDK normalizes finish_reason -> finishReason via its inbound Zod schema.
+          const finishReason = choice.finishReason;
           if (finishReason === 'tool_calls' || finishReason === 'stop') {
             for (const [vsCodeId, buf] of toolCallBuffers) {
               if (emittedToolCalls.has(vsCodeId) || !buf.name) {
@@ -438,7 +442,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * - Assistant messages MUST have either non-empty content OR tool_calls.
    * - Tool results MUST be sent as role="tool" messages with tool_call_id.
    */
-  private toMistralMessages(messages: readonly LanguageModelChatMessage[]): MistralMessage[] {
+  public toMistralMessages(messages: readonly LanguageModelChatMessage[]): MistralMessage[] {
     const out: MistralMessage[] = [];
     const toolNameByCallId = new Map<string, string>();
 
@@ -607,7 +611,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 /**
  * Convert VS Code message role to Mistral role
  */
-function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' {
+export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' {
   switch (role) {
     case LanguageModelChatMessageRole.User:
       return 'user';
