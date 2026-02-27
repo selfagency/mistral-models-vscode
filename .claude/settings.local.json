@@ -16,7 +16,11 @@
       "Bash(pnpm vitest run src/extension.test.ts)",
       "Bash(git add src/extension.test.ts)",
       "Bash(pnpm check-types)",
-      "Bash(git add src/provider.test.ts)"
+      "Bash(git add src/provider.test.ts)",
+      "WebFetch(domain:code.visualstudio.com)",
+      "Bash(git add docs/plans/2026-02-27-chat-participant-design.md)",
+      "Bash(git add docs/plans/2026-02-27-chat-participant.md)",
+      "Bash(git add vitest.config.js src/provider.test.ts)"
     ]
   }
 }

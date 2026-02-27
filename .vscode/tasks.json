@@ -2,16 +2,39 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "npm",
-            "script": "watch",
-            "problemMatcher": "$tsc-watch",
-            "isBackground": true,
-            "presentation": {
-                "reveal": "never"
-            },
+            "label": "compile",
+            "type": "shell",
+            "command": "pnpm",
+            "args": ["run", "compile"],
             "group": {
                 "kind": "build",
                 "isDefault": true
+            },
+            "problemMatcher": "$tsc",
+            "presentation": {
+                "reveal": "silent"
+            }
+        },
+        {
+            "label": "watch",
+            "type": "shell",
+            "command": "pnpm",
+            "args": ["run", "watch:build"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "tsup",
+                "pattern": {
+                    "regexp": "^(.*)$",
+                    "message": 1
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^CLI Building",
+                    "endsPattern": "^CLI Watching for changes"
+                }
+            },
+            "presentation": {
+                "reveal": "never"
             }
         }
     ]

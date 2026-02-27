@@ -34,15 +34,17 @@
 		"compile": "pnpm run check-types && pnpm run lint && tsup",
 		"deploy": "vsce publish",
 		"format": "oxfmt 'src/**/*.ts' --write",
-		"lint": "oxlint 'src/**/*.ts'",
 		"lint:fix": "oxlint 'src/**/*.ts' --fix",
+		"lint": "oxlint 'src/**/*.ts'",
 		"package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup",
+		"prepare": "husky",
 		"prerelease": "vsce publish --pre-release",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"vscode:prepublish": "pnpm run package",
 		"watch:build": "tsup --watch",
 		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-		"watch": "pnpm-run-all -p watch:*",
-		"prepare": "husky"
+		"watch": "run-p watch:*"
 	},
 	"lint-staged": {
 		"src/**/*.ts": [
@@ -77,6 +79,7 @@
 	"devDependencies": {
 		"@types/node": "^25.3.2",
 		"@types/vscode": "^1.109.0",
+		"@vitest/coverage-v8": "^4.0.18",
 		"@vscode/dts": "^0.4.1",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
