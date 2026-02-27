@@ -276,10 +276,10 @@ describe('MistralChatModelProvider — toMistralMessages', () => {
   let provider: MistralChatModelProvider;
 
   function userMsg(...parts: any[]) {
-    return { role: LanguageModelChatMessageRole.User, content: parts };
+    return { role: LanguageModelChatMessageRole.User, content: parts, name: undefined };
   }
   function assistantMsg(...parts: any[]) {
-    return { role: LanguageModelChatMessageRole.Assistant, content: parts };
+    return { role: LanguageModelChatMessageRole.Assistant, content: parts, name: undefined };
   }
 
   beforeEach(() => {
