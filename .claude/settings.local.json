@@ -44,7 +44,13 @@
       "Bash(node -e \":*)",
       "Bash(node --require ./node_modules/.bin/../.pnpm/esm-hook@1.0.1/node_modules/esm-hook/index.js -e \" const start = Date.now\\(\\); const orig = require; // Time the whole thing setTimeout\\(\\(\\) => { console.log\\(''still running after 200ms''\\); }, 200\\); try { require\\(''./dist/provider.js''\\); } catch\\(e\\) { console.log\\(''failed:'', e.message.split\\(''\\\\n''\\)[0]\\); } console.log\\(''total:'', Date.now\\(\\) - start, ''ms''\\); \")",
       "Bash(node -e \"JSON.parse\\(require\\(''fs''\\).readFileSync\\(''package.json'',''utf8''\\)\\); console.log\\(''valid''\\)\")",
-      "Bash(pnpm test)"
+      "Bash(pnpm test)",
+      "Read(//Users/daniel/.npm/_logs/**)",
+      "Bash(pnpm list @vscode/vsce vsce)",
+      "Bash(vsce --version)",
+      "Bash(pnpm run package)",
+      "Bash(vsce package)",
+      "Bash(pnpm dlx @vscode/vsce package --no-dependencies)"
     ],
     "additionalDirectories": [
       "/tmp"
