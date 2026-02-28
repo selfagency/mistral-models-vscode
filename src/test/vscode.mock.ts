@@ -70,3 +70,41 @@ export const lm = {
 export const commands = {
   registerCommand: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
+
+export class MarkdownString {
+  constructor(public readonly value: string) {}
+}
+
+export class LanguageModelChatMessage {
+  static User(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage(LanguageModelChatMessageRole.User, content, name);
+  }
+  static Assistant(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage(LanguageModelChatMessageRole.Assistant, content, name);
+  }
+  constructor(
+    public readonly role: LanguageModelChatMessageRole,
+    public readonly content: string,
+    public readonly name?: string,
+  ) {}
+}
+
+export class ChatRequestTurn {
+  constructor(public readonly prompt: string) {}
+}
+
+export class ChatResponseTurn {
+  constructor(public readonly response: ChatResponseMarkdownPart[]) {}
+}
+
+export class ChatResponseMarkdownPart {
+  constructor(public readonly value: MarkdownString) {}
+}
+
+export const Uri = {
+  joinPath: vi.fn().mockReturnValue(undefined),
+};
+
+export const chat = {
+  createChatParticipant: vi.fn().mockReturnValue({ iconPath: undefined, dispose: vi.fn() }),
+};

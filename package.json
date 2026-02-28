@@ -69,10 +69,20 @@
 					"managementCommand": "mistral-chat.manageApiKey"
 				}
 			}
+		],
+		"chatParticipants": [
+			{
+				"id": "mistral-ai-copilot-chat.mistral",
+				"name": "mistral",
+				"fullName": "Mistral AI",
+				"description": "Chat with a Mistral AI model",
+				"isSticky": true
+			}
 		]
 	},
 	"activationEvents": [
-		"onLanguageModelChatProvider:mistral"
+		"onLanguageModelChatProvider:mistral",
+		"onChatParticipant:mistral-ai-copilot-chat.mistral"
 	],
 	"dependencies": {
 		"@mistralai/mistralai": "^1.14.1",

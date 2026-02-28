@@ -2,15 +2,12 @@ import * as vscode from 'vscode';
 import { MistralChatModelProvider } from './provider';
 
 export function activate(context: vscode.ExtensionContext) {
-  // Create a log output channel for diagnostics (uses VS Code's logging API) when available.
   const logOutputChannel =
     typeof vscode.window.createOutputChannel === 'function'
       ? vscode.window.createOutputChannel('Mistral Models', { log: true })
       : undefined;
 
   const provider = new MistralChatModelProvider(context, logOutputChannel as any, true);
-  // Register provider and command; push channel separately only when available so tests
-  // that expect exactly two disposables don't break in mocks that lack createOutputChannel.
   context.subscriptions.push(
     vscode.lm.registerLanguageModelChatProvider('mistral', provider),
     vscode.commands.registerCommand('mistral-chat.manageApiKey', async () => {
@@ -21,6 +18,47 @@ export function activate(context: vscode.ExtensionContext) {
   if (logOutputChannel) {
     context.subscriptions.push(logOutputChannel);
   }
+
+  const participantHandler: vscode.ChatRequestHandler = async (
+    request: vscode.ChatRequest,
+    chatContext: vscode.ChatContext,
+    stream: vscode.ChatResponseStream,
+    token: vscode.CancellationToken,
+  ): Promise<void> => {
+    const messages: vscode.LanguageModelChatMessage[] = [];
+
+    for (const turn of chatContext.history) {
+      if (turn instanceof vscode.ChatRequestTurn) {
+        messages.push(vscode.LanguageModelChatMessage.User(turn.prompt));
+      } else if (turn instanceof vscode.ChatResponseTurn) {
+        const text = turn.response
+          .filter((r): r is vscode.ChatResponseMarkdownPart => r instanceof vscode.ChatResponseMarkdownPart)
+          .map(r => r.value.value)
+          .join('');
+        if (text) {
+          messages.push(vscode.LanguageModelChatMessage.Assistant(text));
+        }
+      }
+    }
+
+    messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
+
+    try {
+      const response = await request.model.sendRequest(messages, {}, token);
+      for await (const chunk of response.stream) {
+        if (chunk instanceof vscode.LanguageModelTextPart) {
+          stream.markdown(chunk.value);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      stream.markdown(`Error: ${message}`);
+    }
+  };
+
+  const participant = vscode.chat.createChatParticipant('mistral-ai-copilot-chat.mistral', participantHandler);
+  participant.iconPath = (vscode.Uri as any).joinPath(context.extensionUri, 'logo.png');
+  context.subscriptions.push(participant);
 }
 
 export function deactivate() {}
