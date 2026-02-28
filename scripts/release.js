@@ -22,7 +22,7 @@ const isPreRelease = argv['pre-release'] === true || argv.p === true;
 if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
   console.error(
     isPreRelease
-      ? 'Usage: pnpm run prerelease <version>   (e.g. pnpm run prerelease 1.0.5)'
+      ? 'Usage: pnpm run release:pre <version>   (e.g. pnpm run release:pre 1.0.5)'
       : 'Usage: pnpm release <version>   (e.g. pnpm release 1.0.5)',
   );
   process.exit(1);
