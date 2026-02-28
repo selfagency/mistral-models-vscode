@@ -3,7 +3,6 @@ import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
   ExtensionContext,
-  InputBoxValidationSeverity,
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatMessageRole,
@@ -135,7 +134,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     if (autoInit) {
       this.log.info('[Mistral] Auto-initializing client on activation');
       // Start initialization and remember the promise so incoming queries can await it.
-      this.initPromise = this.initClient(false);
+      this.initPromise = this.initClient(true);
       // Do not await here (activation should not be blocked); consumers will await initPromise.
     }
   }
@@ -289,12 +288,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       ignoreFocusOut: true,
       validateInput: value => {
         if (!value || value.trim().length === 0) {
-          return { message: 'API key is required', severity: InputBoxValidationSeverity.Error };
+          return 'API key is required';
         }
         // Mistral API keys are typically long alphanumeric strings
         if (value.length < 20) {
-          return { message: 'API key appears too short', severity: InputBoxValidationSeverity.Warning };
+          return 'API key appears too short';
         }
+        return undefined;
       },
     });
 

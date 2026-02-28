@@ -40,7 +40,12 @@
       "Bash(gh api \"repos/selfagency/beans-vscode/contents/src/test/integration/extension-activation.test.ts\" --jq '.content')",
       "Bash(gh api \"repos/selfagency/beans-vscode/contents/src%2Ftest%2Fextension.test.ts\" --jq '.content')",
       "Bash(gh api \"repos/selfagency/beans-vscode/contents/src%2Ftest%2Fintegration%2Fextension-activation.test.ts\" --jq '.content')",
-      "Bash(ls /Users/daniel/Developer/mistral-models-vscode/node_modules/.pnpm/@vscode+test-cli*/node_modules/@vscode/test-cli/bin/)"
+      "Bash(ls /Users/daniel/Developer/mistral-models-vscode/node_modules/.pnpm/@vscode+test-cli*/node_modules/@vscode/test-cli/bin/)",
+      "Bash(node -e \":*)",
+      "Bash(node --require ./node_modules/.bin/../.pnpm/esm-hook@1.0.1/node_modules/esm-hook/index.js -e \" const start = Date.now\\(\\); const orig = require; // Time the whole thing setTimeout\\(\\(\\) => { console.log\\(''still running after 200ms''\\); }, 200\\); try { require\\(''./dist/provider.js''\\); } catch\\(e\\) { console.log\\(''failed:'', e.message.split\\(''\\\\n''\\)[0]\\); } console.log\\(''total:'', Date.now\\(\\) - start, ''ms''\\); \")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

@@ -39,9 +39,9 @@
 		"package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup",
 		"prepare": "husky",
 		"prerelease": "vsce publish --pre-release",
-		"release": "zx ./scripts/release.mjs",
+		"release": "zx ./scripts/release.js",
 		"test": "vitest run src",
-		"test:extension": "vscode-test",
+		"test:extension": "vscode-test test/integration",
 		"test:coverage": "vitest run --coverage",
 		"vscode:prepublish": "pnpm run package",
 		"watch:build": "tsup --watch",
@@ -86,6 +86,7 @@
 		"@vscode/dts": "^0.4.1",
 		"@vscode/test-cli": "^0.0.12",
 		"@vscode/test-electron": "^2.5.2",
+		"assert": "^2.1.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
 		"npm-run-all": "^4.1.5",
@@ -96,6 +97,7 @@
 		"tsup": "^8.5.1",
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.18",
+		"vscode": "^1.1.37",
 		"zx": "^8.8.5"
 	},
 	"engines": {
