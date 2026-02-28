@@ -30,3 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Copilot Chat compatibility
 - Tool calling support
 - API key management
+
+
+## [0.1.4] - 2026-02-28
+
+**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/commits/v0.1.4
