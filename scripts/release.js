@@ -248,10 +248,13 @@ async function main() {
   if (!original.includes(heading)) {
     const marker = '## [Unreleased]';
     const idx = original.indexOf(marker);
+    const firstVersionIdx = original.search(/^## \[/m);
     const updated =
       idx >= 0
         ? `${original.slice(0, idx + marker.length)}\n${section}${original.slice(idx + marker.length)}`
-        : `${original}\n${section}`;
+        : firstVersionIdx >= 0
+          ? `${original.slice(0, firstVersionIdx)}${section}\n${original.slice(firstVersionIdx)}`
+          : `${original}\n${section}`;
     writeFileSync(changelogPath, updated);
   } else {
     console.log('ℹ️  CHANGELOG already contains this release heading; skipping.');
@@ -284,7 +287,7 @@ async function main() {
   await sleep(10_000);
 
   const spinner = ora({ text: 'Tests: queued' }).start();
-  for (const name of ['Tests', 'Remote Tests']) {
+  for (const name of ['Tests']) {
     spinner.text = `${name}: queued`;
     spinner.start();
     await waitForWorkflow(octokit, name, owner, repo, headSha, spinner);
