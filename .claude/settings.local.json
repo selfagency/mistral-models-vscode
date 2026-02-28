@@ -20,7 +20,11 @@
       "WebFetch(domain:code.visualstudio.com)",
       "Bash(git add docs/plans/2026-02-27-chat-participant-design.md)",
       "Bash(git add docs/plans/2026-02-27-chat-participant.md)",
-      "Bash(git add vitest.config.js src/provider.test.ts)"
+      "Bash(git add vitest.config.js src/provider.test.ts)",
+      "Bash(pnpm run compile)",
+      "Bash(git add .vscode/tasks.json package.json)",
+      "Bash(git add .vscode/tasks.json)",
+      "Bash(echo \"Exit code: $?\")"
     ]
   }
 }
