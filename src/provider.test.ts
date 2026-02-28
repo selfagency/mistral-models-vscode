@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LanguageModelChatMessageRole,
+  LanguageModelDataPart,
   LanguageModelTextPart,
   LanguageModelToolCallPart,
   LanguageModelToolResultPart,
-  LanguageModelDataPart,
 } from 'vscode';
-import { formatModelName, getChatModelInfo, toMistralRole, MistralChatModelProvider } from './provider';
+import { formatModelName, getChatModelInfo, MistralChatModelProvider, toMistralRole } from './provider';
 
 // ── Shared mock context ───────────────────────────────────────────────────────
 
@@ -63,12 +63,15 @@ describe('getChatModelInfo', () => {
 
   it('tooltip includes detail when present', () => {
     const info = getChatModelInfo({ ...base, detail: 'Latest flagship' });
-    expect(info.tooltip).toBe('Mistral Mistral Large - Latest flagship');
+    expect(info.tooltip).toContain('Mistral Mistral Large');
+    expect(info.tooltip).toContain('Latest flagship');
+    expect(info.tooltip).toContain('id:');
   });
 
   it('tooltip omits detail when absent', () => {
     const info = getChatModelInfo(base);
-    expect(info.tooltip).toBe('Mistral Mistral Large');
+    expect(info.tooltip).toContain('Mistral Mistral Large');
+    expect(info.tooltip).toContain('id:');
   });
 
   it('imageInput is false when supportsVision is false', () => {

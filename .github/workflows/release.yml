@@ -225,14 +225,14 @@ jobs:
 
       - name: Package extension
         run: |
-          pnpm dlx @vscode/vsce package --no-dependencies --out beans-vscode.vsix
+          pnpm dlx @vscode/vsce package --no-dependencies --out mistral-models-vscode.vsix
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.detect-tag.outputs.release_tag }}
           body_path: release-notes.md
-          files: "beans-vscode.vsix"
+          files: "mistral-models-vscode.vsix"
           draft: false
           prerelease: false
         env:
@@ -260,7 +260,7 @@ jobs:
       - name: Publish to VS Code Marketplace
         id: publish_vsce
         if: "!contains(needs.detect-tag.outputs.release_tag, '-')"
-        run: pnpm dlx @vscode/vsce publish --packagePath beans-vscode.vsix -p ${{ secrets.VSCE_PAT }}
+        run: pnpm dlx @vscode/vsce publish --packagePath mistral-models-vscode.vsix -p ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
@@ -277,7 +277,7 @@ jobs:
               deployment_id: ${{ steps.deploy_vsce.outputs.deployment_id }},
               state: outcome === 'success' ? 'success' : 'failure',
               description: `VS Code Marketplace publish ${outcome}`,
-              environment_url: 'https://marketplace.visualstudio.com/items?itemName=selfagency.beans-vscode',
+              environment_url: 'https://marketplace.visualstudio.com/items?itemName=selfagency.mistral-models-vscode',
               auto_inactive: false,
             });
 
@@ -303,7 +303,7 @@ jobs:
       - name: Publish to Open VSX
         id: publish_ovsx
         if: "!contains(needs.detect-tag.outputs.release_tag, '-')"
-        run: pnpm dlx ovsx publish beans-vscode.vsix -p ${{ secrets.OVSX_PAT }}
+        run: pnpm dlx ovsx publish mistral-models-vscode.vsix -p ${{ secrets.OVSX_PAT }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -320,6 +320,6 @@ jobs:
               deployment_id: ${{ steps.deploy_ovsx.outputs.deployment_id }},
               state: outcome === 'success' ? 'success' : 'failure',
               description: `Open VSX publish ${outcome}`,
-              environment_url: 'https://open-vsx.org/extension/selfagency/beans-vscode',
+              environment_url: 'https://open-vsx.org/extension/selfagency/mistral-models-vscode',
               auto_inactive: false,
             });
