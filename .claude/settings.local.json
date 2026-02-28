@@ -24,7 +24,23 @@
       "Bash(pnpm run compile)",
       "Bash(git add .vscode/tasks.json package.json)",
       "Bash(git add .vscode/tasks.json)",
-      "Bash(echo \"Exit code: $?\")"
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(gh api repos/selfagency/beans-vscode/contents/test --jq '.[].name')",
+      "Bash(gh repo view selfagency/beans-vscode)",
+      "Bash(gh search repos \"beans-vscode user:selfagency\" --json nameWithOwner,url)",
+      "Bash(gh api repos/selfagency/beans-vscode/git/trees/main?recursive=1 --jq '.tree[] | select\\(.path | test\\(\"\"test|spec|runTest\"\"\\)\\) | .path')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/git/trees/main\" -f recursive=1 --jq '.tree[] | select\\(.path | test\\(\"\"test|runTest|suite\"\"\\)\\) | .path')",
+      "Bash(gh repo view selfagency/beans-vscode --json defaultBranchRef --jq '.defaultBranchRef.name')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/git/trees/main?recursive=true\" --jq '.tree[] | select\\(.path | test\\(\"\"test|runTest|suite\"\"\\)\\) | .path')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/.vscode-test.mjs\" --jq '.content')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/package.json\" --jq '.content')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/git/trees/main?recursive=true\" --jq '.tree[] | select\\(.path | test\\(\"\"test.*integration|integration.*test|src/test.*test\\\\\\\\.ts\"\"\\)\\) | .path')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/git/trees/main?recursive=true\" --jq '.tree[] | select\\(.path | test\\(\"\"integration\\\\\\\\.test|extension\\\\\\\\.lifecycle|extension\\\\\\\\.test|activation\"\"\\)\\) | .path')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/src/test/extension.test.ts\" --jq '.content')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/src/test/integration/extension-activation.test.ts\" --jq '.content')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/src%2Ftest%2Fextension.test.ts\" --jq '.content')",
+      "Bash(gh api \"repos/selfagency/beans-vscode/contents/src%2Ftest%2Fintegration%2Fextension-activation.test.ts\" --jq '.content')",
+      "Bash(ls /Users/daniel/Developer/mistral-models-vscode/node_modules/.pnpm/@vscode+test-cli*/node_modules/@vscode/test-cli/bin/)"
     ]
   }
 }

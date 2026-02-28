@@ -41,7 +41,7 @@
 		"prerelease": "vsce publish --pre-release",
 		"release": "zx ./scripts/release.mjs",
 		"test": "vitest run src",
-		"test:extension": "node ./test/runTest.js",
+		"test:extension": "vscode-test",
 		"test:coverage": "vitest run --coverage",
 		"vscode:prepublish": "pnpm run package",
 		"watch:build": "tsup --watch",
