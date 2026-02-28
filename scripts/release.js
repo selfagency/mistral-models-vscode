@@ -17,8 +17,14 @@ cd(ROOT);
 // ---------------------------------------------------------------------------
 
 const version = argv._[0];
+const isPreRelease = argv['pre-release'] === true || argv.p === true;
+
 if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
-  console.error('Usage: pnpm release <version>   (e.g. pnpm release 1.0.5)');
+  console.error(
+    isPreRelease
+      ? 'Usage: pnpm run prerelease <version>   (e.g. pnpm run prerelease 1.0.5)'
+      : 'Usage: pnpm release <version>   (e.g. pnpm release 1.0.5)',
+  );
   process.exit(1);
 }
 
@@ -278,6 +284,18 @@ async function main() {
   commitLocal = false;
 
   const headSha = runGit(['rev-parse', 'HEAD']).stdout.trim();
+
+  if (isPreRelease) {
+    // --- Pre-release: publish directly, no tag or GitHub release -------------
+
+    console.log(`📦 Publishing pre-release ${tag} to VS Code Marketplace...`);
+    await $`pnpm run package`;
+    await $`pnpm dlx @vscode/vsce publish --pre-release --no-dependencies`;
+
+    releaseDone = true;
+    console.log(`✅ Pre-release complete: ${tag} published to VS Code Marketplace.`);
+    return;
+  }
 
   // --- Wait for required workflows (sequential to avoid concurrent-spinner visual corruption) ------
 
