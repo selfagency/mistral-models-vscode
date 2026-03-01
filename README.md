@@ -1,5 +1,7 @@
 # Mistral for Copilot
 
+[![Tests](https://github.com/selfagency/mistral-models-vscode/actions/workflows/ci.yml/badge.svg)](https://github.com/selfagency/mistral-models-vscode/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/selfagency/mistral-models-vscode/graph/badge.svg?token=0gHudqeY4p)](https://codecov.io/gh/selfagency/mistral-models-vscode)
+
 <p align="center">
   <img src="logo.png" alt="Mistral AI Logo" width="128" height="128">
 </p>
