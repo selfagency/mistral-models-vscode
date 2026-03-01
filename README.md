@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <strong>Forked from [OEvortex/vscode-mistral-copilot-chat](https://github.com/OEvortex/vscode-mistral-copilot-chat), which has been discontinued.</strong>
+  <strong>Forked from <a href="https://github.com/OEvortex/vscode-mistral-copilot-chat">OEvortex/vscode-mistral-copilot-chat</a>, which has been discontinued.</strong>
 </p>
 
 ## ✨ Features
