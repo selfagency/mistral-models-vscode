@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   };
 
-  const participant = vscode.chat.createChatParticipant('mistral-ai-copilot-chat.mistral', participantHandler);
+  const participant = vscode.chat.createChatParticipant('mistral-models-vscode.mistral', participantHandler);
   participant.iconPath = (vscode.Uri as any).joinPath(context.extensionUri, 'logo.png');
   context.subscriptions.push(participant);
 }

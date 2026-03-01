@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  lm,
-  commands,
   chat,
   ChatRequestTurn,
-  ChatResponseTurn,
   ChatResponseMarkdownPart,
-  MarkdownString,
+  ChatResponseTurn,
+  commands,
   LanguageModelTextPart,
+  lm,
+  MarkdownString,
 } from 'vscode';
 import { activate, deactivate } from './extension';
 
@@ -46,7 +46,7 @@ describe('extension', () => {
 
     it('creates the @mistral chat participant', () => {
       activate(mockContext);
-      expect(chat.createChatParticipant).toHaveBeenCalledWith('mistral-ai-copilot-chat.mistral', expect.any(Function));
+      expect(chat.createChatParticipant).toHaveBeenCalledWith('mistral-models-vscode.mistral', expect.any(Function));
     });
 
     it('pushes participant disposable into context.subscriptions', () => {

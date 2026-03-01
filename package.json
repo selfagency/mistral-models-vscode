@@ -72,7 +72,7 @@
     ],
     "chatParticipants": [
       {
-        "id": "mistral-ai-copilot-chat.mistral",
+        "id": "mistral-models-vscode.mistral",
         "name": "mistral",
         "fullName": "Mistral AI",
         "description": "Chat with a Mistral AI model",
@@ -82,7 +82,7 @@
   },
   "activationEvents": [
     "onLanguageModelChatProvider:mistral",
-    "onChatParticipant:mistral-ai-copilot-chat.mistral"
+    "onChatParticipant:mistral-models-vscode.mistral"
   ],
   "dependencies": {
     "@mistralai/mistralai": "^1.14.1",
