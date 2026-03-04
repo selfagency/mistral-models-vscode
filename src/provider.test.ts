@@ -62,17 +62,9 @@ describe('getChatModelInfo', () => {
     expect(info.capabilities?.imageInput).toBe(true);
   });
 
-  it('tooltip does not include detail', () => {
+  it('tooltip is omitted so detail field is shown in the chat picker', () => {
     const info = getChatModelInfo({ ...base, detail: 'Latest flagship' });
-    expect(info.tooltip).toContain('Mistral Large');
-    expect(info.tooltip).not.toContain('Latest flagship');
-    expect(info.tooltip).toContain('id:');
-  });
-
-  it('tooltip omits detail when absent', () => {
-    const info = getChatModelInfo(base);
-    expect(info.tooltip).toContain('Mistral Large');
-    expect(info.tooltip).toContain('id:');
+    expect(info.tooltip).toBeUndefined();
   });
 
   it('imageInput is false when supportsVision is false', () => {
