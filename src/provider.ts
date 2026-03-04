@@ -3,6 +3,8 @@ import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
   ExtensionContext,
+  Event,
+  EventEmitter,
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatMessageRole,
@@ -114,6 +116,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   // Mapping from Mistral tool call IDs to VS Code tool call IDs
   private reverseToolCallIdMapping = new Map<string, string>();
   private readonly log: LogOutputChannel;
+  // Event emitter for notifying VS Code when models change
+  private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
+
+  /**
+   * Event fired when the available set of language models changes.
+   */
+  readonly onDidChangeLanguageModelChatInformation: Event<void> = this._onDidChangeLanguageModelChatInformation.event;
 
   constructor(
     private readonly context: ExtensionContext,
@@ -267,6 +276,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         supportsVision: rm.supportsVision,
         temperature: rm.temperature,
       }));
+      // Notify VS Code that models are available
+      this._onDidChangeLanguageModelChatInformation.fire();
       return this.fetchedModels;
     } catch (error) {
       console.error('Failed to fetch Mistral models:', error);
