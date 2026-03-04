@@ -277,6 +277,41 @@ describe('MistralChatModelProvider — fetchModels', () => {
     expect(models).toEqual([]);
   });
 
+  it('fires onDidChangeLanguageModelChatInformation after a successful fetch', async () => {
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onDidChangeLanguageModelChatInformation when serving from cache', async () => {
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    await provider.fetchModels();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onDidChangeLanguageModelChatInformation on API error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockList = vi.fn().mockRejectedValue(new Error('network error'));
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('cache is cleared when fetchedModels is reset to null', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
     (provider as any).client = { models: { list: mockList } };
