@@ -1188,3 +1188,49 @@ describe('Get Mistral Tool Call ID Edge Cases', () => {
     expect(result).toBeUndefined();
   });
 });
+
+// ── EventEmitter (vscode mock) ────────────────────────────────────────────────
+
+describe('EventEmitter', () => {
+  it('fires events to subscribed listeners', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<string>();
+    const received: string[] = [];
+    emitter.event(v => received.push(v));
+    emitter.fire('hello');
+    expect(received).toEqual(['hello']);
+  });
+
+  it('removes a listener when its subscription is disposed', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<number>();
+    const received: number[] = [];
+    const sub = emitter.event(v => received.push(v));
+    emitter.fire(1);
+    sub.dispose();
+    emitter.fire(2);
+    expect(received).toEqual([1]);
+  });
+
+  it('swallows errors thrown by listeners so other listeners still run', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<void>();
+    const spy = vi.fn();
+    emitter.event(() => {
+      throw new Error('boom');
+    });
+    emitter.event(spy);
+    expect(() => emitter.fire()).not.toThrow();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('clears all listeners on dispose', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<void>();
+    const spy = vi.fn();
+    emitter.event(spy);
+    emitter.dispose();
+    emitter.fire();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
