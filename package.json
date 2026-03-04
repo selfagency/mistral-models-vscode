@@ -37,7 +37,7 @@
     "format": "oxfmt 'src/**/*.ts' --write",
     "lint:fix": "oxlint 'src/**/*.ts' --fix",
     "lint": "oxlint 'src/**/*.ts'",
-    "package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup",
+    "package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup && node ./scripts/fix-extensions.cjs",
     "prepare": "husky",
     "release": "zx ./scripts/release.js",
     "release:pre": "zx ./scripts/release.js --pre-release",
