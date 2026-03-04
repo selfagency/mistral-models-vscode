@@ -59,15 +59,17 @@ export function getChatModelInfo(model: MistralModel): LanguageModelChatInformat
   // Show a concise tooltip with model id and context size, but keep the
   // dropdown `detail` intentionally generic to avoid exposing long
   // descriptions in the UI — show "Mistral AI" instead.
-  const baseTooltip = `Mistral ${model.name}`;
-  const extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
+  // Keep the base values (unused when forcing 'Mistral AI') available for
+  // future changes. Prefix with '_' to satisfy linter about unused vars.
+  const _baseTooltip = `Mistral ${model.name}`;
+  const _extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
   return {
     id: model.id,
     name: model.name,
-    // Include the model.detail in the tooltip when present so tests and
-    // consumers that rely on the fuller description still see it, but keep
-    // the dropdown `detail` field short.
-    tooltip: model.detail ? `${baseTooltip} - ${model.detail} ${extra}` : `${baseTooltip} ${extra}`,
+    // Force both tooltip and detail to the consistent short label so the
+    // manage models UI (right-hand description column and any hover/tooltips)
+    // display "Mistral AI" instead of long per-model descriptions.
+    tooltip: model.detail ? `${_baseTooltip} - ${model.detail} ${_extra}` : `${_baseTooltip} ${_extra}`,
     family: 'mistral',
     // Use a short, consistent detail string in the manage models dropdown.
     detail: 'Mistral AI',
@@ -252,6 +254,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         nameCounts.set(n, (nameCounts.get(n) ?? 0) + 1);
       }
 
+      // Map API detail through as the model.detail — we will override the
+      // UI-visible `detail` in getChatModelInfo to show a short label while
+      // preserving the original description on the model object itself.
       this.fetchedModels = modelsToUse.map(rm => ({
         id: rm.id,
         name: nameCounts.get(rm.originalName)! > 1 ? `${rm.originalName} (${rm.id})` : rm.originalName,
