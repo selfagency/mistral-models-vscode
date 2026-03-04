@@ -64,14 +64,14 @@ describe('getChatModelInfo', () => {
 
   it('tooltip includes detail when present', () => {
     const info = getChatModelInfo({ ...base, detail: 'Latest flagship' });
-    expect(info.tooltip).toContain('Mistral Mistral Large');
+    expect(info.tooltip).toContain('Mistral Large');
     expect(info.tooltip).toContain('Latest flagship');
     expect(info.tooltip).toContain('id:');
   });
 
   it('tooltip omits detail when absent', () => {
     const info = getChatModelInfo(base);
-    expect(info.tooltip).toContain('Mistral Mistral Large');
+    expect(info.tooltip).toContain('Mistral Large');
     expect(info.tooltip).toContain('id:');
   });
 

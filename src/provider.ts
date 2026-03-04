@@ -55,23 +55,18 @@ export function formatModelName(id: string): string {
  * Get chat model information for VS Code Language Model API
  */
 export function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
-  // Provide tooltip and a simplified detail for the manage models dropdown.
-  // Show a concise tooltip with model id and context size, but keep the
-  // dropdown `detail` intentionally generic to avoid exposing long
-  // descriptions in the UI — show "Mistral AI" instead.
-  // Keep the base values (unused when forcing 'Mistral AI') available for
-  // future changes. Prefix with '_' to satisfy linter about unused vars.
-  const _baseTooltip = `Mistral ${model.name}`;
-  const _extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
+  // Build a concise tooltip with model name, detail, id, and context size.
+  // Avoid duplicating "Mistral" since model.name already includes it (e.g., "Mistral Large").
+  const extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
   return {
     id: model.id,
     name: model.name,
-    // Force both tooltip and detail to the consistent short label so the
-    // manage models UI (right-hand description column and any hover/tooltips)
-    // display "Mistral AI" instead of long per-model descriptions.
-    tooltip: model.detail ? `${_baseTooltip} - ${model.detail} ${_extra}` : `${_baseTooltip} ${_extra}`,
+    // Tooltip shown when hovering the model in the UI.
+    // Include the detail if available, plus model id and context size for debugging.
+    tooltip: model.detail ? `${model.name} - ${model.detail} ${extra}` : `${model.name} ${extra}`,
     family: 'mistral',
-    // Use a short, consistent detail string in the manage models dropdown.
+    // Short, consistent description shown alongside the model in the chat window
+    // and manage models dropdown. This avoids exposing long per-model descriptions.
     detail: 'Mistral AI',
     maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
