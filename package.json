@@ -21,6 +21,7 @@
     "url": "https://github.com/selfagency/mistral-models-vscode.git"
   },
   "license": "MIT",
+  "type": "module",
   "qna": "marketplace",
   "author": {
     "name": "Daniel Sieradski",

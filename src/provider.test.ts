@@ -6,7 +6,7 @@ import {
   LanguageModelToolCallPart,
   LanguageModelToolResultPart,
 } from 'vscode';
-import { formatModelName, getChatModelInfo, MistralChatModelProvider, toMistralRole } from './provider';
+import { formatModelName, getChatModelInfo, MistralChatModelProvider, toMistralRole } from './provider.js';
 
 // ── Shared mock context ───────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ import {
   lm,
   MarkdownString,
 } from 'vscode';
-import { activate, deactivate } from './extension';
+import { activate, deactivate } from './extension.js';
 
 vi.mock('./provider', () => ({
   MistralChatModelProvider: vi.fn().mockImplementation(function () {
