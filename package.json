@@ -1,7 +1,7 @@
 {
   "name": "mistral-models-vscode",
   "displayName": "Mistral for Copilot",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Access Mistral AI models within GitHub Copilot Chat",
   "categories": [
     "AI",

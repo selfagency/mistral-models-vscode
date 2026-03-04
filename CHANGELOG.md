@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [0.1.8] - 2026-03-04
+
+## What's Changed
+* ui: show 'Mistral AI' in manage models detail by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/3
+* ci: run tests on release tag pushes by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/2
+
+
+**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.7...v0.1.8
+
+_Source: changes from v0.1.7 to v0.1.8._
+
 ## [0.1.7] - 2026-03-04
 
 ## What's Changed
