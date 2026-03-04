@@ -64,8 +64,10 @@ export function getChatModelInfo(model: MistralModel): LanguageModelChatInformat
   return {
     id: model.id,
     name: model.name,
-    // Keep tooltip concise and consistent (omit long model.description here).
-    tooltip: `${baseTooltip} ${extra}`,
+    // Include the model.detail in the tooltip when present so tests and
+    // consumers that rely on the fuller description still see it, but keep
+    // the dropdown `detail` field short.
+    tooltip: model.detail ? `${baseTooltip} - ${model.detail} ${extra}` : `${baseTooltip} ${extra}`,
     family: 'mistral',
     // Use a short, consistent detail string in the manage models dropdown.
     detail: 'Mistral AI',
