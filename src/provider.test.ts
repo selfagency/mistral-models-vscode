@@ -66,6 +66,8 @@ describe('getChatModelInfo', () => {
     expect(info.tooltip).toContain('Mistral Mistral Large');
     expect(info.tooltip).toContain('Latest flagship');
     expect(info.tooltip).toContain('id:');
+    // The right-hand UI `detail` is the short label
+    expect(info.detail).toBe('Mistral AI');
   });
 
   it('tooltip omits detail when absent', () => {
