@@ -55,15 +55,18 @@ export function formatModelName(id: string): string {
  * Get chat model information for VS Code Language Model API
  */
 export function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
-  // Build a concise tooltip with model name, detail, id, and context size.
+  // Build a concise tooltip with model name, id, and context size.
   // Avoid duplicating "Mistral" since model.name already includes it (e.g., "Mistral Large").
+  // Exclude detail from tooltip to ensure the chat window model picker displays
+  // the detail field ("Mistral AI") instead of full descriptions.
   const extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
   return {
     id: model.id,
     name: model.name,
     // Tooltip shown when hovering the model in the UI.
-    // Include the detail if available, plus model id and context size for debugging.
-    tooltip: model.detail ? `${model.name} - ${model.detail} ${extra}` : `${model.name} ${extra}`,
+    // Include only model name, id, and context size - exclude detail to prevent
+    // VS Code from displaying full descriptions in the model picker.
+    tooltip: `${model.name} ${extra}`,
     family: 'mistral',
     // Short, consistent description shown alongside the model in the chat window
     // and manage models dropdown. This avoids exposing long per-model descriptions.

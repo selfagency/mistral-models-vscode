@@ -62,10 +62,10 @@ describe('getChatModelInfo', () => {
     expect(info.capabilities?.imageInput).toBe(true);
   });
 
-  it('tooltip includes detail when present', () => {
+  it('tooltip does not include detail', () => {
     const info = getChatModelInfo({ ...base, detail: 'Latest flagship' });
     expect(info.tooltip).toContain('Mistral Large');
-    expect(info.tooltip).toContain('Latest flagship');
+    expect(info.tooltip).not.toContain('Latest flagship');
     expect(info.tooltip).toContain('id:');
   });
 
