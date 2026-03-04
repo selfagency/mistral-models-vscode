@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { MistralChatModelProvider } from './provider';
+import { MistralChatModelProvider } from './provider.js';
 
 export function activate(context: vscode.ExtensionContext) {
   const logOutputChannel =
