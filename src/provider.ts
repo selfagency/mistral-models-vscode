@@ -271,7 +271,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         temperature: rm.temperature,
       }));
       // Notify VS Code that models are available
-      this._onDidChangeLanguageModelChatInformation.fire();
+      this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return this.fetchedModels;
     } catch (error) {
       console.error('Failed to fetch Mistral models:', error);
