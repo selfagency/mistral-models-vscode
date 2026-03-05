@@ -62,17 +62,9 @@ describe('getChatModelInfo', () => {
     expect(info.capabilities?.imageInput).toBe(true);
   });
 
-  it('tooltip includes detail when present', () => {
+  it('tooltip is omitted so detail field is shown in the chat picker', () => {
     const info = getChatModelInfo({ ...base, detail: 'Latest flagship' });
-    expect(info.tooltip).toContain('Mistral Mistral Large');
-    expect(info.tooltip).toContain('Latest flagship');
-    expect(info.tooltip).toContain('id:');
-  });
-
-  it('tooltip omits detail when absent', () => {
-    const info = getChatModelInfo(base);
-    expect(info.tooltip).toContain('Mistral Mistral Large');
-    expect(info.tooltip).toContain('id:');
+    expect(info.tooltip).toBeUndefined();
   });
 
   it('imageInput is false when supportsVision is false', () => {
@@ -283,6 +275,41 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
     const models = await provider.fetchModels();
     expect(models).toEqual([]);
+  });
+
+  it('fires onDidChangeLanguageModelChatInformation after a successful fetch', async () => {
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onDidChangeLanguageModelChatInformation when serving from cache', async () => {
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    await provider.fetchModels();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onDidChangeLanguageModelChatInformation on API error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockList = vi.fn().mockRejectedValue(new Error('network error'));
+    (provider as any).client = { models: { list: mockList } };
+
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.fetchModels();
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('cache is cleared when fetchedModels is reset to null', async () => {
@@ -1194,5 +1221,51 @@ describe('Get Mistral Tool Call ID Edge Cases', () => {
   it('should handle VS Code ID with special characters', () => {
     const result = provider.getMistralToolCallId('vs-code-id-!@#$%^&*()');
     expect(result).toBeUndefined();
+  });
+});
+
+// ── EventEmitter (vscode mock) ────────────────────────────────────────────────
+
+describe('EventEmitter', () => {
+  it('fires events to subscribed listeners', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<string>();
+    const received: string[] = [];
+    emitter.event(v => received.push(v));
+    emitter.fire('hello');
+    expect(received).toEqual(['hello']);
+  });
+
+  it('removes a listener when its subscription is disposed', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<number>();
+    const received: number[] = [];
+    const sub = emitter.event(v => received.push(v));
+    emitter.fire(1);
+    sub.dispose();
+    emitter.fire(2);
+    expect(received).toEqual([1]);
+  });
+
+  it('swallows errors thrown by listeners so other listeners still run', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<void>();
+    const spy = vi.fn();
+    emitter.event(() => {
+      throw new Error('boom');
+    });
+    emitter.event(spy);
+    expect(() => emitter.fire()).not.toThrow();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('clears all listeners on dispose', async () => {
+    const { EventEmitter } = await import('./test/vscode.mock.js');
+    const emitter = new EventEmitter<void>();
+    const spy = vi.fn();
+    emitter.event(spy);
+    emitter.dispose();
+    emitter.fire();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

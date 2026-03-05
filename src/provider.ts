@@ -3,6 +3,8 @@ import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
   ExtensionContext,
+  Event,
+  EventEmitter,
   LanguageModelChatInformation,
   LanguageModelChatMessage,
   LanguageModelChatMessageRole,
@@ -55,23 +57,15 @@ export function formatModelName(id: string): string {
  * Get chat model information for VS Code Language Model API
  */
 export function getChatModelInfo(model: MistralModel): LanguageModelChatInformation {
-  // Provide tooltip and a simplified detail for the manage models dropdown.
-  // Show a concise tooltip with model id and context size, but keep the
-  // dropdown `detail` intentionally generic to avoid exposing long
-  // descriptions in the UI — show "Mistral AI" instead.
-  // Keep the base values (unused when forcing 'Mistral AI') available for
-  // future changes. Prefix with '_' to satisfy linter about unused vars.
-  const _baseTooltip = `Mistral ${model.name}`;
-  const _extra = `(id: ${model.id}, ctx: ${model.maxInputTokens})`;
   return {
     id: model.id,
     name: model.name,
-    // Force both tooltip and detail to the consistent short label so the
-    // manage models UI (right-hand description column and any hover/tooltips)
-    // display "Mistral AI" instead of long per-model descriptions.
-    tooltip: model.detail ? `${_baseTooltip} - ${model.detail} ${_extra}` : `${_baseTooltip} ${_extra}`,
+    // Intentionally omit tooltip: VS Code uses it as the picker description in the
+    // chat window, overriding the detail field. Without it, detail: 'Mistral AI' is
+    // shown correctly alongside the model name in both the chat window and manage models view.
     family: 'mistral',
-    // Use a short, consistent detail string in the manage models dropdown.
+    // Short, consistent description shown alongside the model in the chat window
+    // and manage models dropdown.
     detail: 'Mistral AI',
     maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
@@ -116,6 +110,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   // Mapping from Mistral tool call IDs to VS Code tool call IDs
   private reverseToolCallIdMapping = new Map<string, string>();
   private readonly log: LogOutputChannel;
+  // Event emitter for notifying VS Code when models change
+  private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
+
+  /**
+   * Event fired when the available set of language models changes.
+   */
+  readonly onDidChangeLanguageModelChatInformation: Event<void> = this._onDidChangeLanguageModelChatInformation.event;
 
   constructor(
     private readonly context: ExtensionContext,
@@ -269,6 +270,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         supportsVision: rm.supportsVision,
         temperature: rm.temperature,
       }));
+      // Notify VS Code that models are available
+      this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return this.fetchedModels;
     } catch (error) {
       console.error('Failed to fetch Mistral models:', error);

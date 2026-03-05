@@ -17,6 +17,38 @@ export interface LanguageModelChatInformation {
 
 export interface LanguageModelChatProvider {}
 
+export type Event<T> = (listener: (e: T) => void, thisArgs?: any, disposables?: any) => any;
+
+export class EventEmitter<T> {
+  private listeners: Array<(e: T) => void> = [];
+
+  public readonly event: Event<T> = (listener: (e: T) => void) => {
+    this.listeners.push(listener);
+    return {
+      dispose: () => {
+        const index = this.listeners.indexOf(listener);
+        if (index !== -1) {
+          this.listeners.splice(index, 1);
+        }
+      },
+    };
+  };
+
+  public fire(data: T): void {
+    this.listeners.forEach(listener => {
+      try {
+        listener(data);
+      } catch (error) {
+        console.error('Error in event listener:', error);
+      }
+    });
+  }
+
+  public dispose(): void {
+    this.listeners.length = 0;
+  }
+}
+
 export enum LanguageModelChatMessageRole {
   User = 1,
   Assistant = 2,

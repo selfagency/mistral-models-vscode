@@ -21,7 +21,6 @@
     "url": "https://github.com/selfagency/mistral-models-vscode.git"
   },
   "license": "MIT",
-  "type": "module",
   "qna": "marketplace",
   "author": {
     "name": "Daniel Sieradski",
@@ -37,10 +36,10 @@
     "format": "oxfmt 'src/**/*.ts' --write",
     "lint:fix": "oxlint 'src/**/*.ts' --fix",
     "lint": "oxlint 'src/**/*.ts'",
-    "package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup && node ./scripts/fix-extensions.cjs",
+    "package": "pnpm run check-types && pnpm run lint && NODE_ENV=production tsup",
     "prepare": "husky",
-    "release": "zx ./scripts/release.js",
-    "release:pre": "zx ./scripts/release.js --pre-release",
+    "release": "zx ./scripts/release.mjs",
+    "release:pre": "zx ./scripts/release.mjs --pre-release",
     "test": "vitest run src",
     "test:extension": "vscode-test test/integration",
     "test:coverage": "vitest run --coverage",
@@ -82,6 +81,7 @@
     ]
   },
   "activationEvents": [
+    "onStartupFinished",
     "onLanguageModelChatProvider:mistral",
     "onChatParticipant:mistral-models-vscode.mistral"
   ],
