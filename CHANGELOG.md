@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.0.9] - 2026-03-05
+
+## What's Changed
+* fix: resolve model display and extension activation issues by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/4
+
+
+**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.8...v1.0.9
+
+_Source: changes from v0.1.8 to v1.0.9._
+
 ## [0.1.8] - 2026-03-04
 
 ## What's Changed
