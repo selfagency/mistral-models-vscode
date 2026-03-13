@@ -3,7 +3,8 @@
 		"src/**/*.ts"
 	],
 	"compilerOptions": {
-		"module": "Node16",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
 		"target": "ES2024",
 		"lib": [
 			"ES2024"

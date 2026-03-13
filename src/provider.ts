@@ -1,4 +1,5 @@
 import { Mistral } from '@mistralai/mistralai';
+import { LLMStreamProcessor } from '@selfagency/llm-stream-parser/processor';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
@@ -468,6 +469,29 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       const toolCallBuffers = new Map<string, { name?: string; argsText: string }>();
       const emittedToolCalls = new Set<string>();
 
+      // LLMStreamProcessor handles thinking tag extraction (<think>...</think>) and
+      // privacy scrubbing automatically. Text events stream clean content; thinking
+      // events are logged to the output channel so they don't pollute the chat UI.
+      const streamProcessor = new LLMStreamProcessor({
+        parseThinkTags: true,
+        scrubContextTags: true,
+        enforcePrivacyTags: true,
+        onWarning: message => {
+          this.log.warn('[Mistral] stream parser: ' + message);
+        },
+      });
+
+      streamProcessor.on('thinking', delta => {
+        this.log.info('[Mistral] thinking: ' + delta.slice(0, 500));
+      });
+
+      streamProcessor.on('text', delta => {
+        if (delta) {
+          this.log.debug('[Mistral] content delta: ' + delta.slice(0, 200));
+          progress.report(new LanguageModelTextPart(delta));
+        }
+      });
+
       for await (const event of stream) {
         // Check if the operation was cancelled
         if (token.isCancellationRequested) {
@@ -481,7 +505,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           const choice = chunk.choices[0];
           const delta = choice.delta;
 
-          // Handle text content
+          // Handle text content — feed into the stream processor which strips
+          // <think> blocks and emits clean text/thinking events.
           if (delta?.content) {
             // delta.content can be string or ContentChunk[]
             const content =
@@ -489,8 +514,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
                 ? delta.content
                 : delta.content.map(c => ('text' in c ? c.text : '')).join('');
             if (content) {
-              this.log.debug('[Mistral] streaming text chunk: ' + content.slice(0, 200));
-              progress.report(new LanguageModelTextPart(content));
+              streamProcessor.process({ content });
             }
           }
 
@@ -539,10 +563,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
             }
           }
 
-          // If we are at a finish boundary, flush any remaining tool calls with best-effort parsing.
+          // If we are at a finish boundary, flush any remaining buffered tool calls.
           // The SDK normalizes finish_reason -> finishReason via its inbound Zod schema.
           const finishReason = choice.finishReason;
-          if (finishReason === 'tool_calls' || finishReason === 'stop') {
+          if (finishReason === 'stop' || finishReason === 'tool_calls') {
             for (const [vsCodeId, buf] of toolCallBuffers) {
               if (emittedToolCalls.has(vsCodeId) || !buf.name) {
                 continue;
@@ -564,6 +588,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           }
         }
       }
+      // Flush any remaining text buffered in the stream processor (e.g. if stream ended without
+      // a finishReason, or was cancelled before seeing 'stop').
+      streamProcessor.flush();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.log.error(
