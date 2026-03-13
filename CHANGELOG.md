@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.1.0] - 2026-03-13
+
+## What's Changed
+* feat: integrate @selfagency/llm-stream-parser for thinking tag extraction by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/6
+
+
+**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v1.0.9...v1.1.0
+
+_Source: changes from v1.0.9 to v1.1.0._
+
 ## [1.0.9] - 2026-03-05
 
 ## What's Changed
