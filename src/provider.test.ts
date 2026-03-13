@@ -1224,6 +1224,144 @@ describe('Get Mistral Tool Call ID Edge Cases', () => {
   });
 });
 
+// ── LLMStreamProcessor — thinking extraction ──────────────────────────────────
+
+describe('provideLanguageModelChatResponse — thinking extraction', () => {
+  let provider: MistralChatModelProvider;
+
+  const mockModel = {
+    id: 'magistral-medium-latest',
+    name: 'Magistral Medium',
+    maxInputTokens: 128000,
+    maxOutputTokens: 16384,
+    defaultCompletionTokens: 16384,
+    toolCalling: false,
+    supportsParallelToolCalls: false,
+    supportsVision: false,
+  };
+
+  const mockToken = { isCancellationRequested: false };
+
+  function makeStream(...chunks: Array<{ content?: string; finishReason?: string }>) {
+    return (async function* () {
+      for (const c of chunks) {
+        yield {
+          data: {
+            choices: [
+              {
+                delta: { content: c.content ?? '', toolCalls: undefined },
+                finishReason: c.finishReason ?? null,
+              },
+            ],
+          },
+        };
+      }
+    })();
+  }
+
+  beforeEach(() => {
+    provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: { stream: vi.fn() },
+    };
+  });
+
+  it('strips <think> blocks — only clean content reaches progress.report', async () => {
+    const rawChunks = [
+      { content: '<think>Let me reason through this.</think>Hello' },
+      { content: ' world', finishReason: 'stop' },
+    ];
+    (provider as any).client.chat.stream.mockResolvedValue(makeStream(...rawChunks));
+
+    const reported: string[] = [];
+    const mockProgress = { report: vi.fn(part => reported.push((part as any).value)) };
+
+    await provider.provideLanguageModelChatResponse(
+      mockModel as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      mockToken as any,
+    );
+
+    const combined = reported.join('');
+    expect(combined).not.toContain('<think>');
+    expect(combined).not.toContain('</think>');
+    expect(combined).not.toContain('Let me reason through this.');
+    expect(combined).toBe('Hello world');
+  });
+
+  it('passes regular content through unchanged when no think tags present', async () => {
+    const rawChunks = [{ content: 'Here is' }, { content: ' the answer', finishReason: 'stop' }];
+    (provider as any).client.chat.stream.mockResolvedValue(makeStream(...rawChunks));
+
+    const reported: string[] = [];
+    const mockProgress = { report: vi.fn(part => reported.push((part as any).value)) };
+
+    await provider.provideLanguageModelChatResponse(
+      mockModel as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      mockToken as any,
+    );
+
+    expect(reported.join('')).toBe('Here is the answer');
+  });
+
+  it('handles response that is entirely a think block with no output content', async () => {
+    const rawChunks = [{ content: '<think>internal reasoning only</think>', finishReason: 'stop' }];
+    (provider as any).client.chat.stream.mockResolvedValue(makeStream(...rawChunks));
+
+    const textReports: string[] = [];
+    const mockProgress = {
+      report: vi.fn(part => {
+        if ((part as any).value !== undefined) textReports.push((part as any).value);
+      }),
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      mockModel as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      mockToken as any,
+    );
+
+    const combined = textReports.join('');
+    expect(combined).not.toContain('<think>');
+    expect(combined).not.toContain('internal reasoning only');
+  });
+
+  it('handles multi-chunk think block split across stream events', async () => {
+    const rawChunks = [
+      { content: '<think>step one' },
+      { content: ' step two</think>Result' },
+      { content: ' here', finishReason: 'stop' },
+    ];
+    (provider as any).client.chat.stream.mockResolvedValue(makeStream(...rawChunks));
+
+    const reported: string[] = [];
+    const mockProgress = { report: vi.fn(part => reported.push((part as any).value)) };
+
+    await provider.provideLanguageModelChatResponse(
+      mockModel as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      mockToken as any,
+    );
+
+    const combined = reported.join('');
+    expect(combined).not.toContain('<think>');
+    expect(combined).not.toContain('step one');
+    expect(combined).not.toContain('step two');
+    expect(combined).toContain('Result');
+    expect(combined).toContain('here');
+  });
+});
+
 // ── EventEmitter (vscode mock) ────────────────────────────────────────────────
 
 describe('EventEmitter', () => {
