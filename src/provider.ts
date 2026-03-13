@@ -482,7 +482,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       });
 
       streamProcessor.on('thinking', delta => {
-        this.log.info('[Mistral] thinking: ' + delta.slice(0, 500));
+        // Avoid logging raw thinking content to prevent leaking sensitive context.
+        this.log.debug('[Mistral] thinking delta length: ' + (delta?.length ?? 0));
       });
 
       streamProcessor.on('text', delta => {
@@ -589,8 +590,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         }
       }
       // Flush any remaining text buffered in the stream processor (e.g. if stream ended without
-      // a finishReason, or was cancelled before seeing 'stop').
-      streamProcessor.flush();
+      // a finishReason). Skip on cancellation to avoid emitting additional UI output after cancel.
+      if (!token.isCancellationRequested) {
+        streamProcessor.flush();
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.log.error(
