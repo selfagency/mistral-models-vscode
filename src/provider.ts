@@ -1,5 +1,6 @@
 import { Mistral } from '@mistralai/mistralai';
 import { LLMStreamProcessor } from '@selfagency/llm-stream-parser/processor';
+import { randomUUID } from 'crypto';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
@@ -117,6 +118,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   private client: Mistral | null = null;
   private tokenizer: Tiktoken | null = null;
   private fetchedModels: MistralModel[] | null = null;
+  private modelCacheTimestamp: number = 0;
+  private static readonly MODEL_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
   private initPromise?: Promise<boolean>;
   // Mapping from VS Code tool call IDs to Mistral tool call IDs
   private toolCallIdMapping = new Map<string, string>();
@@ -166,12 +169,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * Generate a valid VS Code tool call ID (alphanumeric, exactly 9 characters)
    */
   public generateToolCallId(): string {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let id = '';
-    for (let i = 0; i < 9; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
+    // Use crypto.randomUUID() and take first 9 characters of alphanumeric representation
+    const uuid = randomUUID().replace(/-/g, '');
+    return uuid.substring(0, 9);
   }
 
   /**
@@ -201,7 +201,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * Returns an empty array if the client is not initialized or the request fails.
    */
   public async fetchModels(): Promise<MistralModel[]> {
-    if (this.fetchedModels !== null) {
+    const now = Date.now();
+    if (this.fetchedModels !== null && now - this.modelCacheTimestamp < MistralChatModelProvider.MODEL_CACHE_TTL_MS) {
       return this.fetchedModels;
     }
 
@@ -288,6 +289,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         supportsVision: rm.supportsVision,
         temperature: rm.temperature,
       }));
+      this.modelCacheTimestamp = now;
       // Notify VS Code that models are available
       this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return this.fetchedModels;
@@ -628,8 +630,17 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
               let parsedArgs: unknown;
               try {
                 parsedArgs = buf.argsText ? JSON.parse(buf.argsText) : {};
-              } catch {
-                parsedArgs = { raw: buf.argsText };
+              } catch (e) {
+                this.log.warn(
+                  `[Mistral] Tool call "${buf.name}" has invalid JSON arguments: ${String(buf.argsText).substring(0, 100)}`,
+                );
+                progress.report(
+                  new LanguageModelTextPart(
+                    `[Warning: Tool call "${buf.name}" produced invalid arguments and was skipped.]\n`,
+                  ),
+                );
+                emittedToolCalls.add(vsCodeId);
+                continue;
               }
               const parsedArgsObj: Record<string, unknown> =
                 parsedArgs && typeof parsedArgs === 'object'
@@ -836,13 +847,18 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 /**
  * Convert VS Code message role to Mistral role
  */
-export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' {
+export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' | 'system' {
   switch (role) {
     case LanguageModelChatMessageRole.User:
       return 'user';
     case LanguageModelChatMessageRole.Assistant:
       return 'assistant';
+    // System role support for forward compatibility (may not exist in older @types/vscode)
     default:
+      if ((role as unknown) === 3) {
+        // LanguageModelChatMessageRole.System = 3 (if available in future VS Code versions)
+        return 'system';
+      }
       return 'user';
   }
 }
