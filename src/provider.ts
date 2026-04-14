@@ -40,8 +40,20 @@ export interface MistralModel {
 }
 
 // Default completion tokens for rate limiting optimization
-const DEFAULT_COMPLETION_TOKENS = 65536;
-const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const DEFAULT_COMPLETION_TOKENS = 4096;
+const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+
+const MODEL_OUTPUT_LIMITS: Record<string, number> = {
+  'mistral-tiny-latest': 4096,
+  'mistral-small-latest': 4096,
+  'mistral-medium-latest': 4096,
+  'mistral-large-latest': 16384,
+  'codestral-latest': 8192,
+  'devstral-latest': 16384,
+  'pixtral-large-latest': 8192,
+  'magistral-medium-latest': 8192,
+  'magistral-small-latest': 4096,
+};
 
 /**
  * Prettify a model ID into a display name when the API doesn't provide one.
@@ -211,7 +223,12 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         originalName: m.name ?? formatModelName(m.id),
         detail: m.description ?? undefined,
         maxInputTokens: m.maxContextLength ?? 32768,
-        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        maxOutputTokens:
+          (typeof m.maxCompletionTokens === 'number' && m.maxCompletionTokens > 0
+            ? m.maxCompletionTokens
+            : undefined) ??
+          MODEL_OUTPUT_LIMITS[String(m.id).toLowerCase()] ??
+          DEFAULT_MAX_OUTPUT_TOKENS,
         defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
         toolCalling: m.capabilities?.functionCalling ?? false,
         supportsParallelToolCalls: m.capabilities?.functionCalling ?? false,
@@ -328,6 +345,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
     this.client = new Mistral({ apiKey });
     this.fetchedModels = null;
+    this._onDidChangeLanguageModelChatInformation.fire(undefined);
 
     return apiKey;
   }
@@ -450,19 +468,35 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     const topP = typeof modelOptions.topP === 'number' ? modelOptions.topP : (foundModel.top_p ?? undefined);
     const safePrompt = typeof modelOptions.safePrompt === 'boolean' ? modelOptions.safePrompt : undefined;
 
+    const abortController = new AbortController();
+    const cancellationDisposable =
+      typeof token.onCancellationRequested === 'function'
+        ? token.onCancellationRequested(() => {
+            abortController.abort();
+            this.log.info('[Mistral] Request cancelled by user');
+          })
+        : undefined;
+
     try {
+      if (token.isCancellationRequested) {
+        abortController.abort();
+      }
+
       // Create chat completion request with streaming
-      const stream = await this.client.chat.stream({
-        model: model.id,
-        messages: mistralMessages,
-        maxTokens: Math.min(foundModel.defaultCompletionTokens, foundModel.maxOutputTokens),
-        temperature,
-        topP,
-        safePrompt,
-        tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
-        toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
-        parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
-      });
+      const stream = await (this.client.chat as unknown as { stream: (...args: unknown[]) => Promise<unknown> }).stream(
+        {
+          model: model.id,
+          messages: mistralMessages,
+          maxTokens: Math.min(foundModel.defaultCompletionTokens, foundModel.maxOutputTokens),
+          temperature,
+          topP,
+          safePrompt,
+          tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
+          toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
+          parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
+        },
+        { signal: abortController.signal },
+      );
 
       // Process streaming response
       // Tool call deltas often arrive in multiple chunks. Buffer them until we have valid JSON.
@@ -493,7 +527,23 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         }
       });
 
-      for await (const event of stream) {
+      for await (const event of stream as AsyncIterable<{
+        data?: {
+          choices?: Array<{
+            delta?: {
+              content?: string | Array<{ text?: string }>;
+              toolCalls?: Array<{
+                id?: string;
+                function?: {
+                  name?: string;
+                  arguments?: string | Record<string, unknown>;
+                };
+              }>;
+            };
+            finishReason?: string | null;
+          }>;
+        };
+      }>) {
         // Check if the operation was cancelled
         if (token.isCancellationRequested) {
           break;
@@ -502,8 +552,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         // Handle the streaming chunk
         const chunk = event.data;
         this.log.debug('[Mistral] stream chunk received: ' + JSON.stringify(Object.keys(chunk || {})));
-        if (chunk.choices && chunk.choices.length > 0) {
+        if (chunk?.choices && chunk.choices.length > 0) {
           const choice = chunk.choices[0];
+          if (!choice) {
+            continue;
+          }
           const delta = choice.delta;
 
           // Handle text content — feed into the stream processor which strips
@@ -520,7 +573,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           }
 
           // Handle tool calls. The SDK normalizes tool_calls -> toolCalls via its inbound Zod schema.
-          const deltaToolCalls = delta.toolCalls;
+          const deltaToolCalls = delta?.toolCalls;
           if (deltaToolCalls) {
             for (const toolCall of deltaToolCalls) {
               // The SDK defaults a missing id to the sentinel string "null" — skip those too.
@@ -601,6 +654,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           (error instanceof Error ? error.stack || error.message : String(error)),
       );
       progress.report(new LanguageModelTextPart(`Error: ${errorMessage}`));
+    } finally {
+      cancellationDisposable?.dispose();
     }
   }
 
