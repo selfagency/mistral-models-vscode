@@ -244,6 +244,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
     expect(model.name).toBe('Mistral Large');
     expect(model.detail).toBe('Flagship model');
     expect(model.maxInputTokens).toBe(128000);
+    expect(model.maxOutputTokens).toBe(16384);
     expect(model.toolCalling).toBe(true);
     expect(model.supportsParallelToolCalls).toBe(true);
     expect(model.supportsVision).toBe(true);
@@ -257,6 +258,15 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
     const [model] = await provider.fetchModels();
     expect(model.name).toBe('Mistral Large Latest');
+  });
+
+  it('applies conservative output limit for smaller models', async () => {
+    const small = { ...chatModel, id: 'mistral-small-latest', name: 'Mistral Small' };
+    const mockList = vi.fn().mockResolvedValue({ data: [small] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const [model] = await provider.fetchModels();
+    expect(model.maxOutputTokens).toBe(4096);
   });
 
   it('caches the result — second call does not hit the API', async () => {
@@ -593,6 +603,19 @@ describe('setApiKey', () => {
     const provider = new MistralChatModelProvider(mockContext, undefined, false);
     const result = await provider.setApiKey();
     expect(result).toBeUndefined();
+  });
+
+  it('fires model information change event after storing a new key', async () => {
+    const mockApiKey = 'test-api-key';
+    vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
+    vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.setApiKey();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('should accept API key even if it is short', async () => {
@@ -957,6 +980,50 @@ describe('Chat Response Edge Cases', () => {
     );
 
     expect(mockProgress.report).toHaveBeenCalledWith(expect.objectContaining({ value: 'Error: Network error' }));
+  });
+
+  it('passes AbortSignal options to streaming call and aborts when cancelled', async () => {
+    const stream = (async function* () {
+      yield {
+        data: {
+          choices: [{ delta: { content: 'Hello' }, finishReason: 'stop' }],
+        },
+      };
+    })();
+
+    let onCancel: (() => void) | undefined;
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: (listener: () => void) => {
+        onCancel = listener;
+        return { dispose: vi.fn() };
+      },
+    };
+
+    const streamSpy = vi.fn().mockResolvedValue(stream);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: { stream: streamSpy },
+    };
+
+    const progress = { report: vi.fn() };
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 4096,
+        maxOutputTokens: 4096,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Hello')], name: undefined }],
+      {} as any,
+      progress as any,
+      token as any,
+    );
+
+    expect(streamSpy).toHaveBeenCalledOnce();
+    expect(streamSpy.mock.calls[0][1]).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(typeof onCancel).toBe('function');
+    onCancel?.();
   });
 });
 

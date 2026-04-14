@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as vscode from 'vscode';
 import {
   chat,
   ChatRequestTurn,
@@ -8,6 +9,7 @@ import {
   LanguageModelTextPart,
   lm,
   MarkdownString,
+  window,
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
@@ -44,6 +46,12 @@ describe('extension', () => {
       expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(2);
     });
 
+    it('creates a log output channel and tracks it in subscriptions', () => {
+      activate(mockContext);
+      expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
+      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
+    });
+
     it('creates the @mistral chat participant', () => {
       activate(mockContext);
       expect(chat.createChatParticipant).toHaveBeenCalledWith('mistral-models-vscode.mistral', expect.any(Function));
@@ -51,9 +59,9 @@ describe('extension', () => {
 
     it('pushes participant disposable into context.subscriptions', () => {
       activate(mockContext);
-      // Second push call is the participant
-      expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(2);
-      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
+      // Third push call is the participant (after provider+command and output channel)
+      expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(3);
+      expect(mockContext.subscriptions.push.mock.calls[2]).toHaveLength(1);
     });
   });
 
@@ -144,6 +152,30 @@ describe('extension', () => {
 
       const [messages] = mockSendRequest.mock.calls[0];
       expect(messages[0].content).toBe('prior answer');
+    });
+
+    it('includes prior ChatResponseTurn2 as an Assistant message in history', async () => {
+      const handler = await getHandler();
+
+      const mockResponse = { stream: (async function* () {})() };
+      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
+
+      const ChatResponseTurn2Ctor = (vscode as unknown as { ChatResponseTurn2?: new (...args: unknown[]) => unknown })
+        .ChatResponseTurn2;
+      expect(ChatResponseTurn2Ctor).toBeTypeOf('function');
+
+      const priorResponseV2 = new (ChatResponseTurn2Ctor as any)([
+        new (ChatResponseMarkdownPart as any)(new (MarkdownString as any)('prior v2 answer')),
+      ]);
+      await handler(
+        { prompt: 'next', model: { sendRequest: mockSendRequest } },
+        { history: [priorResponseV2] },
+        { markdown: vi.fn() },
+        { isCancellationRequested: false },
+      );
+
+      const [messages] = mockSendRequest.mock.calls[0];
+      expect(messages[0].content).toBe('prior v2 answer');
     });
 
     it('surfaces errors as a markdown message', async () => {

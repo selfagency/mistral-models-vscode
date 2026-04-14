@@ -93,6 +93,14 @@ export class LanguageModelDataPart {
 
 export const window = {
   showInputBox: vi.fn(),
+  createOutputChannel: vi.fn().mockReturnValue({
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    appendLine: vi.fn(),
+    dispose: vi.fn(),
+  }),
 };
 
 export const lm = {
@@ -126,6 +134,10 @@ export class ChatRequestTurn {
 }
 
 export class ChatResponseTurn {
+  constructor(public readonly response: ChatResponseMarkdownPart[]) {}
+}
+
+export class ChatResponseTurn2 {
   constructor(public readonly response: ChatResponseMarkdownPart[]) {}
 }
 
