@@ -1,6 +1,34 @@
 import * as vscode from 'vscode';
 import { MistralChatModelProvider } from './provider.js';
 
+/**
+ * Map error objects to user-friendly messages, hiding sensitive details.
+ */
+function getUserFriendlyError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const statusCode = (error as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === 'number') {
+      switch (statusCode) {
+        case 401:
+          return 'Invalid API key. Please check your Mistral API key configuration.';
+        case 403:
+          return 'Access denied. Please verify your API key has the required permissions.';
+        case 429:
+          return 'Rate limit exceeded. Please wait a moment and try again.';
+        case 500:
+        case 502:
+        case 503:
+          return 'Mistral service is temporarily unavailable. Please try again later.';
+      }
+    }
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.length > 0) {
+      return message;
+    }
+  }
+  return 'An unexpected error occurred. Check the output channel for details.';
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const logOutputChannel = vscode.window.createOutputChannel('Mistral Models', { log: true });
 
@@ -62,8 +90,9 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      stream.markdown(`Error: ${message}`);
+      const userMessage = getUserFriendlyError(error);
+      stream.markdown(`Error: ${userMessage}`);
+      logOutputChannel.error(`[Mistral] Chat participant error: ${String(error)}`);
     }
   };
 
