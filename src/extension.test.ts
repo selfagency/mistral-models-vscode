@@ -190,6 +190,25 @@ describe('extension', () => {
 
       expect(mockStream.markdown).toHaveBeenCalledWith(expect.stringContaining('model unavailable'));
     });
+
+    it('sanitizes error messages and hides sensitive details', async () => {
+      const handler = await getHandler();
+
+      const mockStream = { markdown: vi.fn() };
+      const mockSendRequest = vi.fn().mockRejectedValue({
+        statusCode: 401,
+        message: 'secret token leak',
+      });
+
+      await handler({ prompt: 'test', model: { sendRequest: mockSendRequest } }, { history: [] }, mockStream, {
+        isCancellationRequested: false,
+      });
+
+      // Should show user-friendly message for 401, not the raw error
+      const callArg = mockStream.markdown.mock.calls[0][0];
+      expect(callArg).toContain('API key');
+      expect(callArg).not.toContain('secret token leak');
+    });
   });
 
   describe('deactivate', () => {

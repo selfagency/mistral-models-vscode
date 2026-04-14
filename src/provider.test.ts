@@ -90,6 +90,10 @@ describe('toMistralRole', () => {
     expect(toMistralRole(LanguageModelChatMessageRole.Assistant)).toBe('assistant');
   });
 
+  it('maps numeric 3 (System role indicator) to "system" for forward compatibility', () => {
+    expect(toMistralRole(3 as any)).toBe('system');
+  });
+
   it('maps unknown values to "user"', () => {
     expect(toMistralRole(99 as any)).toBe('user');
   });
@@ -398,6 +402,33 @@ describe('Fetch Models Edge Cases', () => {
     const models = await provider.fetchModels();
     expect(models).toHaveLength(1);
     expect(models[0].name).toBe('Test Model');
+  });
+
+  it('caches models within TTL (30 minutes)', async () => {
+    const chatModel = {
+      id: 'test-model',
+      name: 'Test Model',
+      maxContextLength: 4096,
+      capabilities: { completionChat: true },
+    };
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = { models: { list: mockList } };
+
+    // First call should fetch
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(1);
+
+    // Second call within cache window should use cache
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(1); // Still 1, not 2
+
+    // Manually expire cache by setting timestamp to past
+    (provider as any).modelCacheTimestamp = Date.now() - 31 * 60 * 1000; // 31 minutes ago
+
+    // Third call after expiry should fetch again
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(2);
   });
 });
 
