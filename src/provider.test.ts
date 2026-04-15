@@ -90,6 +90,10 @@ describe('toMistralRole', () => {
     expect(toMistralRole(LanguageModelChatMessageRole.Assistant)).toBe('assistant');
   });
 
+  it('maps numeric 3 (System role indicator) to "system" for forward compatibility', () => {
+    expect(toMistralRole(3 as any)).toBe('system');
+  });
+
   it('maps unknown values to "user"', () => {
     expect(toMistralRole(99 as any)).toBe('user');
   });
@@ -152,19 +156,6 @@ describe('MistralChatModelProvider — tool call ID mapping', () => {
 
     it('returns undefined for an unknown VS Code ID', () => {
       expect(provider.getMistralToolCallId('unknown-id')).toBeUndefined();
-    });
-
-    it('returns the Mistral ID for a known VS Code ID', () => {
-      const mistralId = 'mistral-id-1';
-      const vsCodeId = provider.getOrCreateVsCodeToolCallId(mistralId);
-
-      const result = provider.getMistralToolCallId(vsCodeId);
-      expect(result).toBe(mistralId);
-    });
-
-    it('returns undefined for an unknown VS Code ID', () => {
-      const result = provider.getMistralToolCallId('unknown-id');
-      expect(result).toBeUndefined();
     });
 
     it('handles empty VS Code ID', () => {
@@ -244,6 +235,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
     expect(model.name).toBe('Mistral Large');
     expect(model.detail).toBe('Flagship model');
     expect(model.maxInputTokens).toBe(128000);
+    expect(model.maxOutputTokens).toBe(16384);
     expect(model.toolCalling).toBe(true);
     expect(model.supportsParallelToolCalls).toBe(true);
     expect(model.supportsVision).toBe(true);
@@ -257,6 +249,15 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
     const [model] = await provider.fetchModels();
     expect(model.name).toBe('Mistral Large Latest');
+  });
+
+  it('applies conservative output limit for smaller models', async () => {
+    const small = { ...chatModel, id: 'mistral-small-latest', name: 'Mistral Small' };
+    const mockList = vi.fn().mockResolvedValue({ data: [small] });
+    (provider as any).client = { models: { list: mockList } };
+
+    const [model] = await provider.fetchModels();
+    expect(model.maxOutputTokens).toBe(4096);
   });
 
   it('caches the result — second call does not hit the API', async () => {
@@ -388,6 +389,33 @@ describe('Fetch Models Edge Cases', () => {
     const models = await provider.fetchModels();
     expect(models).toHaveLength(1);
     expect(models[0].name).toBe('Test Model');
+  });
+
+  it('caches models within TTL (30 minutes)', async () => {
+    const chatModel = {
+      id: 'test-model',
+      name: 'Test Model',
+      maxContextLength: 4096,
+      capabilities: { completionChat: true },
+    };
+    const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = { models: { list: mockList } };
+
+    // First call should fetch
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(1);
+
+    // Second call within cache window should use cache
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(1); // Still 1, not 2
+
+    // Manually expire cache by setting timestamp to past
+    (provider as any).modelCacheTimestamp = Date.now() - 31 * 60 * 1000; // 31 minutes ago
+
+    // Third call after expiry should fetch again
+    await provider.fetchModels();
+    expect(mockList).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -581,6 +609,7 @@ describe('setApiKey', () => {
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
 
     const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
     const result = await provider.setApiKey();
     expect(result).toBe(mockApiKey);
     expect(window.showInputBox).toHaveBeenCalled();
@@ -595,14 +624,58 @@ describe('setApiKey', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should accept API key even if it is short', async () => {
-    const shortApiKey = 'short';
-    vi.spyOn(window, 'showInputBox').mockResolvedValue(shortApiKey);
+  it('fires model information change event after storing a new key', async () => {
+    const mockApiKey = 'test-api-key';
+    vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
 
     const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
+    const listener = vi.fn();
+    provider.onDidChangeLanguageModelChatInformation(listener);
+
+    await provider.setApiKey();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('trims whitespace from API key before storing', async () => {
+    const apiKeyWithWhitespace = '  test-api-key  ';
+    vi.spyOn(window, 'showInputBox').mockResolvedValue(apiKeyWithWhitespace);
+    vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
+
     const result = await provider.setApiKey();
+
+    // Verify the key was trimmed when stored
+    expect(result).toBe('test-api-key');
+    expect(mockContext.secrets.store).toHaveBeenCalledWith('MISTRAL_API_KEY', 'test-api-key');
+    expect(mockContext.secrets.store).not.toHaveBeenCalledWith('MISTRAL_API_KEY', apiKeyWithWhitespace);
+  });
+
+  it('should accept API key even if it is short', async () => {
+    const shortApiKey = 'short';
+    let validateInputFn: ((value: string) => any) | undefined;
+
+    vi.spyOn(window, 'showInputBox').mockImplementation(options => {
+      validateInputFn = options?.validateInput;
+      return Promise.resolve(shortApiKey);
+    });
+
+    vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
+
+    const result = await provider.setApiKey();
+
     expect(result).toBe(shortApiKey);
+    // Verify that validateInput function was passed to showInputBox
+    expect(validateInputFn).toBeDefined();
+    // And that it rejects empty strings
+    expect(validateInputFn!('')).toBe('API key is required');
+    expect(validateInputFn!(' ')).toBe('API key is required');
   });
 });
 
@@ -615,10 +688,22 @@ describe('Set API Key Edge Cases', () => {
     provider = new MistralChatModelProvider(mockContext, undefined, false);
   });
 
+  it('rejects invalid API keys after validation failure', async () => {
+    vi.spyOn(window, 'showInputBox').mockResolvedValue('bad-key');
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(false);
+
+    const result = await provider.setApiKey();
+    expect(result).toBeUndefined();
+    expect(window.showErrorMessage).toHaveBeenCalledWith(
+      'Invalid Mistral API key. Please check your key and try again.',
+    );
+  });
+
   it('should handle API key storage failure', async () => {
     const mockApiKey = 'test-api-key';
     vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
     vi.spyOn(mockContext.secrets, 'store').mockRejectedValue(new Error('Storage error'));
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
 
     const result = await provider.setApiKey();
     expect(result).toBe(mockApiKey);
@@ -635,15 +720,18 @@ describe('Set API Key Edge Cases', () => {
     const mockApiKey = '  test-api-key  ';
     vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
 
     const result = await provider.setApiKey();
-    expect(result).toBe(mockApiKey);
+    expect(result).toBe('test-api-key');
+    expect(mockContext.secrets.store).toHaveBeenCalledWith('MISTRAL_API_KEY', 'test-api-key');
   });
 
   it('should handle API key with special characters', async () => {
     const mockApiKey = 'test-api-key-!@#$%^&*()';
     vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
 
     const result = await provider.setApiKey();
     expect(result).toBe(mockApiKey);
@@ -685,6 +773,7 @@ describe('Initialization Logic', () => {
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
 
     const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
     const result = await provider['initClient'](false);
     expect(result).toBe(true);
     expect(window.showInputBox).toHaveBeenCalled();
@@ -728,6 +817,7 @@ describe('Initialization Edge Cases', () => {
     const mockApiKey = 'test-api-key';
     vi.spyOn(window, 'showInputBox').mockResolvedValue(mockApiKey);
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
+    vi.spyOn(provider, 'validateApiKey').mockResolvedValue(true);
 
     const result = await provider['initClient'](false);
     expect(result).toBe(true);
@@ -807,17 +897,33 @@ describe('Model Information Edge Cases', () => {
 
     expect(models).toEqual([]);
   });
+
+  it('returns empty array when cancellation is already requested', async () => {
+    const mockCancellationToken = { isCancellationRequested: true, onCancellationRequested: vi.fn() };
+    const models = await provider.provideLanguageModelChatInformation({ silent: true }, mockCancellationToken as any);
+    expect(models).toEqual([]);
+  });
 });
 
 // ── Chat Response Provision ───────────────────────────────────────────────
 
 describe('Chat Response Provision', () => {
-  it('should handle chat response with text', async () => {
+  it('should handle chat response with text and verify chat.stream() arguments', async () => {
     const mockApiKey = 'test-api-key';
     vi.spyOn(mockContext.secrets, 'get').mockResolvedValue(mockApiKey);
 
     const provider = new MistralChatModelProvider(mockContext, undefined, false);
     await provider['initClient'](true);
+
+    const mockStream = (async function* () {
+      yield {
+        data: {
+          choices: [{ delta: { content: 'Hello world' }, finishReason: 'stop' }],
+        },
+      };
+    })();
+
+    vi.spyOn((provider as any).client.chat, 'stream').mockResolvedValue(mockStream);
 
     const mockModel = {
       id: 'test-model',
@@ -833,7 +939,7 @@ describe('Chat Response Provision', () => {
     const mockMessages = [
       {
         role: LanguageModelChatMessageRole.User,
-        content: 'Hello',
+        content: [new LanguageModelTextPart('Hello')],
       },
     ];
 
@@ -853,7 +959,277 @@ describe('Chat Response Provision', () => {
       mockToken as any,
     );
 
+    // Verify chat.stream() was called with request payload + AbortSignal options
+    const streamCalls = (provider as any).client.chat.stream.mock.calls;
+    expect(streamCalls).toHaveLength(1);
+    expect(streamCalls[0][0]).toEqual(
+      expect.objectContaining({
+        model: 'test-model',
+      }),
+    );
+    expect(streamCalls[0][1]).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mockProgress.report).toHaveBeenCalled();
+  });
+
+  it('tracks token usage from final stream usage chunks', async () => {
+    const statusBarItem = {
+      name: '',
+      text: '',
+      tooltip: '',
+      show: vi.fn(),
+      hide: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const provider = new MistralChatModelProvider(mockContext, undefined, false, statusBarItem as any);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: {
+        stream: vi.fn().mockResolvedValue(
+          (async function* () {
+            yield {
+              data: {
+                usage: { prompt_tokens: 12, completion_tokens: 7 },
+                choices: [{ delta: { content: 'Hello' }, finishReason: 'stop' }],
+              },
+            };
+          })(),
+        ),
+      },
+    };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 1000,
+        maxOutputTokens: 1000,
+        defaultCompletionTokens: 1000,
+        toolCalling: false,
+        supportsParallelToolCalls: false,
+        supportsVision: false,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Hello')], name: undefined }],
+      {} as any,
+      { report: vi.fn() } as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn() } as any,
+    );
+
+    expect(provider.getUsageStats()).toEqual({ input: 12, output: 7 });
+    expect(statusBarItem.text).toContain('Mistral');
+    expect(statusBarItem.show).toHaveBeenCalled();
+  });
+
+  it('handles multi-chunk streaming with text across chunks', async () => {
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: {
+        stream: vi.fn().mockResolvedValue(
+          (async function* () {
+            // Chunk 1: First part of text
+            yield {
+              data: {
+                choices: [{ delta: { content: 'Hello ' } }],
+              },
+            };
+            // Chunk 2: Second part of text
+            yield {
+              data: {
+                choices: [{ delta: { content: 'World' } }],
+              },
+            };
+            // Chunk 3: Finish
+            yield {
+              data: {
+                choices: [{ delta: { finishReason: 'stop' } }],
+              },
+            };
+          })(),
+        ),
+      },
+    };
+
+    const mockProgress = { report: vi.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 1000,
+        maxOutputTokens: 1000,
+        defaultCompletionTokens: 1000,
+        toolCalling: false,
+        supportsParallelToolCalls: false,
+        supportsVision: false,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Test')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn() } as any,
+    );
+
+    // Verify streamed content includes both chunks
+    const combined = mockProgress.report.mock.calls
+      .filter(call => call[0] instanceof LanguageModelTextPart)
+      .map(call => (call[0] as LanguageModelTextPart).value)
+      .join('');
+    expect(combined).toContain('Hello');
+    expect(combined).toContain('World');
+  });
+
+  it('handles multi-chunk streaming with tool call arguments accumulated across chunks', async () => {
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: {
+        stream: vi.fn().mockResolvedValue(
+          (async function* () {
+            // Chunk 1: Start tool call with partial arguments
+            yield {
+              data: {
+                choices: [
+                  {
+                    delta: {
+                      toolCalls: [
+                        {
+                          id: 'call-1',
+                          type: 'function',
+                          function: { name: 'test_tool', arguments: '{"param1": ' },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            };
+            // Chunk 2: Complete the arguments
+            yield {
+              data: {
+                choices: [
+                  {
+                    delta: {
+                      toolCalls: [
+                        {
+                          index: 0,
+                          id: 'call-1',
+                          function: { name: 'test_tool', arguments: '"value1"}' },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            };
+            // Chunk 3: Finish
+            yield {
+              data: {
+                choices: [{ delta: { finishReason: 'stop' } }],
+              },
+            };
+          })(),
+        ),
+      },
+    };
+
+    const mockProgress = { report: vi.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 1000,
+        maxOutputTokens: 1000,
+        defaultCompletionTokens: 1000,
+        toolCalling: true,
+        supportsParallelToolCalls: false,
+        supportsVision: false,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Test')], name: undefined }],
+      { tools: [{ id: 'test_tool', description: 'Test tool' }] } as any,
+      mockProgress as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn() } as any,
+    );
+
+    // Verify that the tool call was emitted once with complete arguments
+    const toolCallArg = mockProgress.report.mock.calls.find(call => call[0] instanceof LanguageModelToolCallPart);
+    expect(toolCallArg).toBeDefined();
+    expect(toolCallArg![0] instanceof LanguageModelToolCallPart).toBe(true);
+    const toolCall = toolCallArg![0] as LanguageModelToolCallPart;
+    expect(toolCall.name).toBe('test_tool');
+    expect(typeof toolCall.input).toBe('object');
+    expect((toolCall.input as any).param1).toBe('value1');
+  });
+
+  it('handles multi-chunk streaming with thinking tags stripped', async () => {
+    const provider = new MistralChatModelProvider(mockContext, undefined, false);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: {
+        stream: vi.fn().mockResolvedValue(
+          (async function* () {
+            // Chunk 1: Start think tag
+            yield {
+              data: {
+                choices: [{ delta: { content: '<think>' } }],
+              },
+            };
+            // Chunk 2: Thinking content
+            yield {
+              data: {
+                choices: [{ delta: { content: 'Let me think about this...' } }],
+              },
+            };
+            // Chunk 3: End think tag, start response
+            yield {
+              data: {
+                choices: [{ delta: { content: '</think>Response: ' } }],
+              },
+            };
+            // Chunk 4: Final response
+            yield {
+              data: {
+                choices: [{ delta: { content: 'Here is the answer.' } }],
+              },
+            };
+            // Chunk 5: Finish
+            yield {
+              data: {
+                choices: [{ delta: { finishReason: 'stop' } }],
+              },
+            };
+          })(),
+        ),
+      },
+    };
+
+    const mockProgress = { report: vi.fn() };
+
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 1000,
+        maxOutputTokens: 1000,
+        defaultCompletionTokens: 1000,
+        toolCalling: false,
+        supportsParallelToolCalls: false,
+        supportsVision: false,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Test')], name: undefined }],
+      {} as any,
+      mockProgress as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn() } as any,
+    );
+
+    // Verify that thinking content was stripped and only final response was emitted
+    const textParts = mockProgress.report.mock.calls
+      .filter(call => call[0] instanceof LanguageModelTextPart)
+      .map(call => (call[0] as LanguageModelTextPart).value);
+
+    expect(textParts).not.toContain('<think>');
+    expect(textParts).not.toContain('Let me think about this...');
+    expect(textParts).not.toContain('</think>');
+    expect(textParts.join('')).toContain('Response: Here is the answer.');
   });
 });
 
@@ -957,6 +1333,50 @@ describe('Chat Response Edge Cases', () => {
     );
 
     expect(mockProgress.report).toHaveBeenCalledWith(expect.objectContaining({ value: 'Error: Network error' }));
+  });
+
+  it('passes AbortSignal options to streaming call and aborts when cancelled', async () => {
+    const stream = (async function* () {
+      yield {
+        data: {
+          choices: [{ delta: { content: 'Hello' }, finishReason: 'stop' }],
+        },
+      };
+    })();
+
+    let onCancel: (() => void) | undefined;
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: (listener: () => void) => {
+        onCancel = listener;
+        return { dispose: vi.fn() };
+      },
+    };
+
+    const streamSpy = vi.fn().mockResolvedValue(stream);
+    (provider as any).client = {
+      models: { list: vi.fn().mockResolvedValue({ data: [] }) },
+      chat: { stream: streamSpy },
+    };
+
+    const progress = { report: vi.fn() };
+    await provider.provideLanguageModelChatResponse(
+      {
+        id: 'test-model',
+        name: 'Test Model',
+        maxInputTokens: 4096,
+        maxOutputTokens: 4096,
+      } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('Hello')], name: undefined }],
+      {} as any,
+      progress as any,
+      token as any,
+    );
+
+    expect(streamSpy).toHaveBeenCalledOnce();
+    expect(streamSpy.mock.calls[0][1]).toEqual(expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(typeof onCancel).toBe('function');
+    onCancel?.();
   });
 });
 
@@ -1267,7 +1687,7 @@ describe('provideLanguageModelChatResponse — thinking extraction', () => {
     };
   });
 
-  it('strips <think> blocks — only clean content reaches progress.report', async () => {
+  it('strips think blocks — only clean content reaches progress.report', async () => {
     const rawChunks = [
       { content: '<think>Let me reason through this.</think>Hello' },
       { content: ' world', finishReason: 'stop' },
@@ -1286,8 +1706,6 @@ describe('provideLanguageModelChatResponse — thinking extraction', () => {
     );
 
     const combined = reported.join('');
-    expect(combined).not.toContain('<think>');
-    expect(combined).not.toContain('</think>');
     expect(combined).not.toContain('Let me reason through this.');
     expect(combined).toBe('Hello world');
   });
@@ -1311,7 +1729,7 @@ describe('provideLanguageModelChatResponse — thinking extraction', () => {
   });
 
   it('handles response that is entirely a think block with no output content', async () => {
-    const rawChunks = [{ content: '<think>internal reasoning only</think>', finishReason: 'stop' }];
+    const rawChunks = [{ content: '<think>reasoning only</think>', finishReason: 'stop' }];
     (provider as any).client.chat.stream.mockResolvedValue(makeStream(...rawChunks));
 
     const textReports: string[] = [];
@@ -1330,8 +1748,7 @@ describe('provideLanguageModelChatResponse — thinking extraction', () => {
     );
 
     const combined = textReports.join('');
-    expect(combined).not.toContain('<think>');
-    expect(combined).not.toContain('internal reasoning only');
+    expect(combined).toBe('');
   });
 
   it('handles multi-chunk think block split across stream events', async () => {
@@ -1354,11 +1771,10 @@ describe('provideLanguageModelChatResponse — thinking extraction', () => {
     );
 
     const combined = reported.join('');
-    expect(combined).not.toContain('<think>');
     expect(combined).not.toContain('step one');
     expect(combined).not.toContain('step two');
     expect(combined).toContain('Result');
-    expect(combined).toContain('here');
+    expect(combined).toContain(' here');
   });
 });
 

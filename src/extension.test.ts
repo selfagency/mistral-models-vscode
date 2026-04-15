@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as vscode from 'vscode';
 import {
   chat,
   ChatRequestTurn,
@@ -8,14 +9,31 @@ import {
   LanguageModelTextPart,
   lm,
   MarkdownString,
+  window,
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
-vi.mock('./provider', () => ({
-  MistralChatModelProvider: vi.fn().mockImplementation(function () {
-    return { setApiKey: vi.fn() };
-  }),
-}));
+vi.mock('./provider', () => {
+  const mockDispose = vi.fn();
+  const mockSetApiKey = vi.fn();
+  const mockProvider = {
+    setApiKey: mockSetApiKey,
+    dispose: mockDispose,
+    _onDidChangeLanguageModelChatInformation: { fire: vi.fn(), dispose: vi.fn() },
+  };
+
+  return {
+    MistralChatModelProvider: vi.fn().mockImplementation(function (
+      context: any,
+      logOutputChannel: any,
+      autoInit?: boolean,
+      statusBarItem?: any,
+    ) {
+      // Preserve constructor signature for testing registration logic
+      return mockProvider;
+    }),
+  };
+});
 
 describe('extension', () => {
   const mockContext = {
@@ -38,10 +56,17 @@ describe('extension', () => {
       expect(commands.registerCommand).toHaveBeenCalledWith('mistral-chat.manageApiKey', expect.any(Function));
     });
 
-    it('pushes exactly 2 disposables into context.subscriptions (provider + command)', () => {
+    it('pushes exactly 3 disposables into context.subscriptions (provider + command + dispose handler)', () => {
       activate(mockContext);
-      // First push call is provider + command bundled together
-      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(2);
+      // First push call is provider + command + dispose handler bundled together
+      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(3);
+    });
+
+    it('creates output channel and status bar and tracks them in subscriptions', () => {
+      activate(mockContext);
+      expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
+      expect(window.createStatusBarItem).toHaveBeenCalled();
+      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(2);
     });
 
     it('creates the @mistral chat participant', () => {
@@ -51,9 +76,9 @@ describe('extension', () => {
 
     it('pushes participant disposable into context.subscriptions', () => {
       activate(mockContext);
-      // Second push call is the participant
-      expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(2);
-      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
+      // Third push call is the participant (after provider+command+dispose and output/status items)
+      expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(3);
+      expect(mockContext.subscriptions.push.mock.calls[2]).toHaveLength(1);
     });
   });
 
@@ -146,6 +171,30 @@ describe('extension', () => {
       expect(messages[0].content).toBe('prior answer');
     });
 
+    it('includes prior ChatResponseTurn2 as an Assistant message in history', async () => {
+      const handler = await getHandler();
+
+      const mockResponse = { stream: (async function* () {})() };
+      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
+
+      const ChatResponseTurn2Ctor = (vscode as unknown as { ChatResponseTurn2?: new (...args: unknown[]) => unknown })
+        .ChatResponseTurn2;
+      expect(ChatResponseTurn2Ctor).toBeTypeOf('function');
+
+      const priorResponseV2 = new (ChatResponseTurn2Ctor as any)([
+        new (ChatResponseMarkdownPart as any)(new (MarkdownString as any)('prior v2 answer')),
+      ]);
+      await handler(
+        { prompt: 'next', model: { sendRequest: mockSendRequest } },
+        { history: [priorResponseV2] },
+        { markdown: vi.fn() },
+        { isCancellationRequested: false },
+      );
+
+      const [messages] = mockSendRequest.mock.calls[0];
+      expect(messages[0].content).toBe('prior v2 answer');
+    });
+
     it('surfaces errors as a markdown message', async () => {
       const handler = await getHandler();
 
@@ -157,6 +206,25 @@ describe('extension', () => {
       });
 
       expect(mockStream.markdown).toHaveBeenCalledWith(expect.stringContaining('model unavailable'));
+    });
+
+    it('sanitizes error messages and hides sensitive details', async () => {
+      const handler = await getHandler();
+
+      const mockStream = { markdown: vi.fn() };
+      const mockSendRequest = vi.fn().mockRejectedValue({
+        statusCode: 401,
+        message: 'secret token leak',
+      });
+
+      await handler({ prompt: 'test', model: { sendRequest: mockSendRequest } }, { history: [] }, mockStream, {
+        isCancellationRequested: false,
+      });
+
+      // Should show user-friendly message for 401, not the raw error
+      const callArg = mockStream.markdown.mock.calls[0][0];
+      expect(callArg).toContain('API key');
+      expect(callArg).not.toContain('secret token leak');
     });
   });
 
