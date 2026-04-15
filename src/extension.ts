@@ -31,18 +31,20 @@ function getUserFriendlyError(error: unknown): string {
 
 export function activate(context: vscode.ExtensionContext) {
   const logOutputChannel = vscode.window.createOutputChannel('Mistral Models', { log: true });
+  const usageStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  usageStatusBar.name = 'Mistral Usage';
+  usageStatusBar.hide();
 
-  const provider = new MistralChatModelProvider(context, logOutputChannel, true);
+  const provider = new MistralChatModelProvider(context, logOutputChannel, true, usageStatusBar);
   context.subscriptions.push(
     vscode.lm.registerLanguageModelChatProvider('mistral', provider),
     vscode.commands.registerCommand('mistral-chat.manageApiKey', async () => {
       await provider.setApiKey();
     }),
+    { dispose: () => provider.dispose() },
   );
 
-  if (logOutputChannel) {
-    context.subscriptions.push(logOutputChannel);
-  }
+  context.subscriptions.push(logOutputChannel, usageStatusBar);
 
   const participantHandler: vscode.ChatRequestHandler = async (
     request: vscode.ChatRequest,
@@ -97,9 +99,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const participant = vscode.chat.createChatParticipant('mistral-models-vscode.mistral', participantHandler);
-  participant.iconPath = (
-    vscode.Uri as unknown as { joinPath: (base: vscode.Uri, path: string) => vscode.Uri }
-  ).joinPath(context.extensionUri, 'logo.png');
+  participant.iconPath = vscode.Uri.file(`${context.extensionUri.fsPath}/logo.png`);
   context.subscriptions.push(participant);
 }
 

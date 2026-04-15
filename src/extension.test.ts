@@ -13,11 +13,27 @@ import {
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
-vi.mock('./provider', () => ({
-  MistralChatModelProvider: vi.fn().mockImplementation(function () {
-    return { setApiKey: vi.fn() };
-  }),
-}));
+vi.mock('./provider', () => {
+  const mockDispose = vi.fn();
+  const mockSetApiKey = vi.fn();
+  const mockProvider = {
+    setApiKey: mockSetApiKey,
+    dispose: mockDispose,
+    _onDidChangeLanguageModelChatInformation: { fire: vi.fn(), dispose: vi.fn() },
+  };
+
+  return {
+    MistralChatModelProvider: vi.fn().mockImplementation(function (
+      context: any,
+      logOutputChannel: any,
+      autoInit?: boolean,
+      statusBarItem?: any,
+    ) {
+      // Preserve constructor signature for testing registration logic
+      return mockProvider;
+    }),
+  };
+});
 
 describe('extension', () => {
   const mockContext = {
@@ -40,16 +56,17 @@ describe('extension', () => {
       expect(commands.registerCommand).toHaveBeenCalledWith('mistral-chat.manageApiKey', expect.any(Function));
     });
 
-    it('pushes exactly 2 disposables into context.subscriptions (provider + command)', () => {
+    it('pushes exactly 3 disposables into context.subscriptions (provider + command + dispose handler)', () => {
       activate(mockContext);
-      // First push call is provider + command bundled together
-      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(2);
+      // First push call is provider + command + dispose handler bundled together
+      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(3);
     });
 
-    it('creates a log output channel and tracks it in subscriptions', () => {
+    it('creates output channel and status bar and tracks them in subscriptions', () => {
       activate(mockContext);
       expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
-      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
+      expect(window.createStatusBarItem).toHaveBeenCalled();
+      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(2);
     });
 
     it('creates the @mistral chat participant', () => {
@@ -59,7 +76,7 @@ describe('extension', () => {
 
     it('pushes participant disposable into context.subscriptions', () => {
       activate(mockContext);
-      // Third push call is the participant (after provider+command and output channel)
+      // Third push call is the participant (after provider+command+dispose and output/status items)
       expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(3);
       expect(mockContext.subscriptions.push.mock.calls[2]).toHaveLength(1);
     });

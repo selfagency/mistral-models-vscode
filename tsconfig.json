@@ -9,6 +9,10 @@
 		"lib": [
 			"ES2024"
 		],
+		"types": [
+			"node",
+			"vscode"
+		],
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true,

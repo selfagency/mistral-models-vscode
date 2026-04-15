@@ -1,3 +1,4 @@
+/* eslint-disable vitest/require-mock-type-parameters */
 import { vi } from 'vitest';
 
 export interface LanguageModelChatInformation {
@@ -9,9 +10,13 @@ export interface LanguageModelChatInformation {
   maxOutputTokens?: number;
   detail?: string;
   tooltip?: string;
+  encoding?: string;
+  extensions?: string[];
   capabilities?: {
     toolCalling?: boolean;
     imageInput?: boolean;
+    defaultTools?: boolean;
+    supportsStreamingOptions?: boolean;
   };
 }
 
@@ -93,12 +98,21 @@ export class LanguageModelDataPart {
 
 export const window = {
   showInputBox: vi.fn(),
+  showErrorMessage: vi.fn(),
   createOutputChannel: vi.fn().mockReturnValue({
     info: vi.fn(),
     debug: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     appendLine: vi.fn(),
+    dispose: vi.fn(),
+  }),
+  createStatusBarItem: vi.fn().mockReturnValue({
+    name: '',
+    text: '',
+    tooltip: '',
+    show: vi.fn(),
+    hide: vi.fn(),
     dispose: vi.fn(),
   }),
 };
@@ -111,23 +125,40 @@ export const commands = {
   registerCommand: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
 
+export const workspace = {
+  getConfiguration: vi.fn().mockReturnValue({
+    get: vi.fn().mockReturnValue(undefined),
+  }),
+};
+
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
 export class MarkdownString {
   constructor(public readonly value: string) {}
 }
 
 export class LanguageModelChatMessage {
-  static User(content: string, name?: string): LanguageModelChatMessage {
+  static User(content: string | Part[], name?: string): LanguageModelChatMessage {
     return new LanguageModelChatMessage(LanguageModelChatMessageRole.User, content, name);
   }
-  static Assistant(content: string, name?: string): LanguageModelChatMessage {
+  static Assistant(content: string | Part[], name?: string): LanguageModelChatMessage {
     return new LanguageModelChatMessage(LanguageModelChatMessageRole.Assistant, content, name);
   }
   constructor(
     public readonly role: LanguageModelChatMessageRole,
-    public readonly content: string,
+    public readonly content: string | Part[],
     public readonly name?: string,
   ) {}
 }
+
+export type Part =
+  | LanguageModelTextPart
+  | LanguageModelToolCallPart
+  | LanguageModelToolResultPart
+  | LanguageModelDataPart;
 
 export class ChatRequestTurn {
   constructor(public readonly prompt: string) {}
@@ -146,6 +177,7 @@ export class ChatResponseMarkdownPart {
 }
 
 export const Uri = {
+  file: vi.fn().mockReturnValue(undefined),
   joinPath: vi.fn().mockReturnValue(undefined),
 };
 
