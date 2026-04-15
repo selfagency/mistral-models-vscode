@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.2.0] - 2026-04-15
+
+## What's Changed
+* chore(deps): bump picomatch from 2.3.1 to 2.3.2 in the npm_and_yarn group across 1 directory by @dependabot[bot] in https://github.com/selfagency/mistral-models-vscode/pull/7
+* Complete comprehensive remediation plan (phases 1-5) + js-tiktoken/lite migration by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/9
+
+## New Contributors
+* @dependabot[bot] made their first contribution in https://github.com/selfagency/mistral-models-vscode/pull/7
+
+**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v1.1.0...v1.2.0
+
+_Source: changes from v1.1.0 to v1.2.0._
+
 ## [1.1.0] - 2026-03-13
 
 ## What's Changed
