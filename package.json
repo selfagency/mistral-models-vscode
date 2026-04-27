@@ -128,7 +128,7 @@
     "onChatParticipant:mistral-models-vscode.mistral"
   ],
   "dependencies": {
-    "@mistralai/mistralai": "2.2.0",
+    "@mistralai/mistralai": "2.2.1",
     "@selfagency/llm-stream-parser": "0.1.5",
     "js-tiktoken": "1.0.21"
   },
