@@ -27,8 +27,11 @@
 - 💬 **Chat Participant** - Invoke `@mistral` directly in Copilot Chat for a dedicated, history-aware Mistral conversation
 - 🔧 **Tool Calling** - Function calling support for agentic workflows
 - 🖼️ **Vision** - Image input support for models that support it
-- 🔒 **Secure** - API key stored using VS Code's encrypted secrets API
 - ⚡ **Streaming** - Real-time response streaming for faster interactions
+- 🚀 **Smart Caching** - 30-minute model cache TTL reduces API calls and improves responsiveness
+- 📲 **Friendly Error Messages** - Clear, actionable error messages for authentication, rate limiting, and service issues
+- 🔔 **Real-time Updates** - Event notifications when API key changes, enabling instant model list refresh
+- 🔒 **Secure** - API key stored using VS Code's encrypted secrets API
 
 ## 🔧 Requirements
 
