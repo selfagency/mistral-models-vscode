@@ -100,10 +100,37 @@ export type MistralMessage =
  * Mistral Chat Model Provider
  * Implements VS Code's LanguageModelChatProvider interface for GitHub Copilot Chat
  */
+/**
+ * Map error objects to user-friendly messages
+ */
+function getUserFriendlyError(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (message.includes('401') || message.includes('unauthorized')) {
+      return 'Invalid or expired API key. Please update it via "Mistral: Manage API Key".';
+    }
+    if (message.includes('403') || message.includes('forbidden')) {
+      return 'API key does not have permission for this operation. Please check your key.';
+    }
+    if (message.includes('429') || message.includes('rate limit')) {
+      return 'Rate limit exceeded. Please try again in a moment.';
+    }
+    if (message.includes('500') || message.includes('internal server')) {
+      return 'Mistral service is temporarily unavailable. Please try again later.';
+    }
+    if (message.includes('network') || message.includes('econnrefused')) {
+      return 'Network error. Please check your connection and try again.';
+    }
+  }
+  return 'An error occurred. Please try again or check your API key.';
+}
+
 export class MistralChatModelProvider implements LanguageModelChatProvider {
   private client: Mistral | null = null;
   private tokenizer: Tiktoken | null = null;
   private fetchedModels: MistralModel[] | null = null;
+  private modelsCacheExpiry: number = 0;
+  private readonly MODELS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
   private initPromise?: Promise<boolean>;
   // Mapping from VS Code tool call IDs to Mistral tool call IDs
   private toolCallIdMapping = new Map<string, string>();
@@ -184,11 +211,18 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   }
 
   /**
+   * Check if the models cache has expired
+   */
+  private isCacheExpired(): boolean {
+    return Date.now() > this.modelsCacheExpiry;
+  }
+
+  /**
    * Fetch available chat models from the Mistral API and cache the result.
    * Returns an empty array if the client is not initialized or the request fails.
    */
   public async fetchModels(): Promise<MistralModel[]> {
-    if (this.fetchedModels !== null) {
+    if (this.fetchedModels !== null && !this.isCacheExpired()) {
       return this.fetchedModels;
     }
 
@@ -271,6 +305,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         temperature: rm.temperature,
       }));
       // Notify VS Code that models are available
+      this.modelsCacheExpiry = Date.now() + this.MODELS_CACHE_TTL_MS;
       this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return this.fetchedModels;
     } catch (error) {
@@ -327,6 +362,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
     this.client = new Mistral({ apiKey });
     this.fetchedModels = null;
+    this.modelsCacheExpiry = 0;
+    this._onDidChangeLanguageModelChatInformation.fire(undefined);
 
     return apiKey;
   }
@@ -548,11 +585,20 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
                 continue;
               }
               let parsedArgs: unknown;
+              let parseError = false;
               try {
                 parsedArgs = buf.argsText ? JSON.parse(buf.argsText) : {};
-              } catch {
-                parsedArgs = { raw: buf.argsText };
+              } catch (e) {
+                parseError = true;
+                this.log.warn(`[Mistral] Failed to parse tool call arguments for ${buf.name}: ${String(e)}`);
+                // Report the error to the user instead of emitting a malformed call
+                progress.report(
+                  new LanguageModelTextPart(`Tool call "${buf.name}" has invalid arguments and was skipped.`),
+                );
+                emittedToolCalls.add(vsCodeId);
+                continue;
               }
+              if (parseError) continue;
               const parsedArgsObj: Record<string, unknown> =
                 parsedArgs && typeof parsedArgs === 'object'
                   ? (parsedArgs as Record<string, unknown>)
@@ -565,12 +611,12 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         }
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const errorMessage = getUserFriendlyError(error);
       this.log.error(
         '[Mistral] provideLanguageModelChatResponse error: ' +
           (error instanceof Error ? error.stack || error.message : String(error)),
       );
-      progress.report(new LanguageModelTextPart(`Error: ${errorMessage}`));
+      progress.report(new LanguageModelTextPart(errorMessage));
     }
   }
 

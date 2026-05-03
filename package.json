@@ -87,6 +87,7 @@
   ],
   "dependencies": {
     "@mistralai/mistralai": "^1.14.1",
+    "@selfagency/llm-stream-parser": "^0.3.1",
     "tiktoken": "^1.0.22"
   },
   "devDependencies": {

@@ -956,7 +956,9 @@ describe('Chat Response Edge Cases', () => {
       mockToken as any,
     );
 
-    expect(mockProgress.report).toHaveBeenCalledWith(expect.objectContaining({ value: 'Error: Network error' }));
+    expect(mockProgress.report).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 'Network error. Please check your connection and try again.' }),
+    );
   });
 });
 

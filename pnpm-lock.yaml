@@ -11,6 +11,9 @@ importers:
       '@mistralai/mistralai':
         specifier: ^1.14.1
         version: 1.14.1
+      '@selfagency/llm-stream-parser':
+        specifier: ^0.3.1
+        version: 0.3.1
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
@@ -746,6 +749,9 @@ packages:
     resolution: {integrity: sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA==}
     cpu: [x64]
     os: [win32]
+
+  '@selfagency/llm-stream-parser@0.3.1':
+    resolution: {integrity: sha512-YHLrEzTcR4xQW+5W9DZBsfMNKmJ4/PLTzuKo9J8dm71oXjiUozJS53Aa4hDI+g3JWvKWZ5tZPcxXmj8nFK0Eyg==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -2904,6 +2910,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
+
+  '@selfagency/llm-stream-parser@0.3.1': {}
 
   '@standard-schema/spec@1.1.0': {}
 

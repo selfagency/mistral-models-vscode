@@ -82,7 +82,7 @@ jobs:
         run: pnpm run compile
 
       - name: Run tests
-        run: xvfb-run -a pnpm test:coverage --reporter=default --reporter=junit --outputFile=test-report.junit.xml
+        run: pnpm test:coverage --reporter=default --reporter=junit --outputFile=test-report.junit.xml
         env:
           CI: true
 
