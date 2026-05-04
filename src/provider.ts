@@ -2,13 +2,14 @@ import { Mistral } from '@mistralai/mistralai';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
-  ExtensionContext,
   Event,
   EventEmitter,
+  ExtensionContext,
   LanguageModelChatInformation,
-  LanguageModelChatMessage,
+  LanguageModelChatRequestMessage,
   LanguageModelChatMessageRole,
   LanguageModelChatProvider,
+  ChatResponseStream,
   LanguageModelChatToolMode,
   LanguageModelDataPart,
   LanguageModelResponsePart,
@@ -20,6 +21,31 @@ import {
   ProvideLanguageModelChatResponseOptions,
   window,
 } from 'vscode';
+
+type OutputPart =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_call'; call: { id?: string; name: string; parameters: Record<string, unknown> } }
+  | { type: 'tool_call_delta'; id?: string; name: string; argumentsDelta: string; index: number };
+
+const cancellationTokenToAbortSignal = (token: CancellationToken): AbortSignal => {
+  const controller = new AbortController();
+  if (token.isCancellationRequested) {
+    controller.abort();
+  } else {
+    token.onCancellationRequested(() => controller.abort());
+  }
+  return controller.signal;
+};
+
+interface AgentsyChatResponseStreamCompat {
+  markdown(content: string): void;
+  progress(content: string): void;
+  anchor(value: unknown, title?: string): void;
+  reference(value: unknown, iconPath?: unknown): void;
+  button(command: { command: string; title: string; arguments?: unknown[] }): void;
+  filetree(value: Array<{ name: string; children?: unknown[] }>, baseUri: unknown): void;
+}
 
 /**
  * Mistral model configuration
@@ -40,7 +66,7 @@ export interface MistralModel {
 
 // Default completion tokens for rate limiting optimization
 const DEFAULT_COMPLETION_TOKENS = 65536;
-const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const DEFAULT_MAX_OUTPUT_TOKENS = 32768;
 
 /**
  * Prettify a model ID into a display name when the API doesn't provide one.
@@ -69,7 +95,7 @@ export function getChatModelInfo(model: MistralModel): LanguageModelChatInformat
     detail: 'Mistral AI',
     maxInputTokens: model.maxInputTokens,
     maxOutputTokens: model.maxOutputTokens,
-    version: '1.0.0',
+    version: model.id,
     capabilities: {
       toolCalling: model.toolCalling,
       imageInput: model.supportsVision ?? false,
@@ -84,6 +110,7 @@ export type MistralContent = string | Array<{ type: 'text'; text: string } | { t
 
 export type MistralToolCall = {
   id: string;
+  index?: number;
   type: 'function';
   function: {
     name: string;
@@ -92,8 +119,9 @@ export type MistralToolCall = {
 };
 
 export type MistralMessage =
+  | { role: 'system'; content: string }
   | { role: 'user'; content: MistralContent }
-  | { role: 'assistant'; content: MistralContent | null; toolCalls?: MistralToolCall[] }
+  | { role: 'assistant'; content: MistralContent | null; toolCalls?: MistralToolCall[]; prefix?: boolean }
   | { role: 'tool'; content: string | null; toolCallId: string; name?: string };
 
 /**
@@ -104,23 +132,22 @@ export type MistralMessage =
  * Map error objects to user-friendly messages
  */
 function getUserFriendlyError(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    if (message.includes('401') || message.includes('unauthorized')) {
-      return 'Invalid or expired API key. Please update it via "Mistral: Manage API Key".';
-    }
-    if (message.includes('403') || message.includes('forbidden')) {
-      return 'API key does not have permission for this operation. Please check your key.';
-    }
-    if (message.includes('429') || message.includes('rate limit')) {
-      return 'Rate limit exceeded. Please try again in a moment.';
-    }
-    if (message.includes('500') || message.includes('internal server')) {
-      return 'Mistral service is temporarily unavailable. Please try again later.';
-    }
-    if (message.includes('network') || message.includes('econnrefused')) {
-      return 'Network error. Please check your connection and try again.';
-    }
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = rawMessage.toLowerCase();
+  if (message.includes('401') || message.includes('unauthorized')) {
+    return 'Invalid or expired API key. Please update it via "Mistral: Manage API Key".';
+  }
+  if (message.includes('403') || message.includes('forbidden')) {
+    return 'API key does not have permission for this operation. Please check your key.';
+  }
+  if (message.includes('429') || message.includes('rate limit')) {
+    return 'Rate limit exceeded. Please try again in a moment.';
+  }
+  if (message.includes('500') || message.includes('internal server')) {
+    return 'Mistral service is temporarily unavailable. Please try again later.';
+  }
+  if (message.includes('network') || message.includes('econnrefused')) {
+    return 'Network error. Please check your connection and try again.';
   }
   return 'An error occurred. Please try again or check your API key.';
 }
@@ -137,6 +164,16 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   // Mapping from Mistral tool call IDs to VS Code tool call IDs
   private reverseToolCallIdMapping = new Map<string, string>();
   private readonly log: LogOutputChannel;
+  private apiKeyManager:
+    | {
+        initialize(): Promise<void>;
+        getApiKey(): Promise<string | undefined>;
+        setApiKey(key?: string): Promise<void>;
+        onDidChangeApiKey(listener: (event: string, newKey: string | undefined) => void): void;
+        setupHasKeyContext?: () => Promise<void>;
+      }
+    | undefined;
+  private apiKeyManagerInitPromise: Promise<void> | undefined;
   // Event emitter for notifying VS Code when models change
   private readonly _onDidChangeLanguageModelChatInformation = new EventEmitter<void>();
 
@@ -208,6 +245,62 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   public getMistralToolCallId(vsCodeId: string): string | undefined {
     return this.toolCallIdMapping.get(vsCodeId);
+  }
+
+  /**
+   * Return the active Mistral client for direct streaming use-cases.
+   */
+  public getClient(): Mistral | null {
+    return this.client;
+  }
+
+  /**
+   * Initialize and memoize ApiKeyManager from @agentsy/vscode.
+   */
+  private async getApiKeyManager(): Promise<{
+    initialize(): Promise<void>;
+    getApiKey(): Promise<string | undefined>;
+    setApiKey(key?: string): Promise<void>;
+    onDidChangeApiKey(listener: (event: string, newKey: string | undefined) => void): void;
+    setupHasKeyContext?: () => Promise<void>;
+  }> {
+    if (this.apiKeyManager) {
+      return this.apiKeyManager;
+    }
+
+    if (!this.apiKeyManagerInitPromise) {
+      this.apiKeyManagerInitPromise = (async () => {
+        const { ApiKeyManager } = await import('@agentsy/vscode');
+        const manager = new ApiKeyManager(this.context, {
+          secretKey: 'MISTRAL_API_KEY',
+          contextKey: 'mistral.hasApiKey',
+          displayName: 'Mistral API Key',
+          promptMessage: 'Enter your Mistral API key (get one at https://console.mistral.ai/)',
+        });
+
+        await manager.initialize();
+        try {
+          await manager.setupHasKeyContext?.();
+        } catch (error) {
+          this.log.debug('[Mistral] setupHasKeyContext failed: ' + String(error));
+        }
+
+        manager.onDidChangeApiKey((_event, newKey) => {
+          this.client = newKey ? new Mistral({ apiKey: newKey }) : null;
+          this.fetchedModels = null;
+          this.modelsCacheExpiry = 0;
+          this._onDidChangeLanguageModelChatInformation.fire(undefined);
+        });
+
+        this.apiKeyManager = manager;
+      })();
+    }
+
+    await this.apiKeyManagerInitPromise;
+    if (!this.apiKeyManager) {
+      throw new Error('Failed to initialize API key manager');
+    }
+    return this.apiKeyManager;
   }
 
   /**
@@ -328,44 +421,47 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * @returns A promise that resolves to the entered API key if valid, or undefined if cancelled
    */
   public async setApiKey(): Promise<string | undefined> {
-    let apiKey: string | undefined = await this.context.secrets.get('MISTRAL_API_KEY');
-    this.log.debug('[Mistral] Prompting user for API key (existing present: ' + !!apiKey + ')');
-    apiKey = await window.showInputBox({
+    const manager = await this.getApiKeyManager();
+    const before = await manager.getApiKey();
+    this.log.debug('[Mistral] Prompting user for API key (existing present: ' + !!before + ')');
+
+    const input = await window.showInputBox({
       placeHolder: 'Mistral API Key',
       password: true,
-      value: apiKey || '',
+      value: before || '',
       prompt: 'Enter your Mistral API key (get one at https://console.mistral.ai/)',
       ignoreFocusOut: true,
-      validateInput: value => {
-        if (!value || value.trim().length === 0) {
-          return 'API key is required';
-        }
-        // Mistral API keys are typically long alphanumeric strings
-        if (value.length < 20) {
-          return 'API key appears too short';
-        }
-        return undefined;
-      },
     });
 
-    if (!apiKey) {
+    if (!input) {
       this.log.info('[Mistral] setApiKey canceled by user');
       return undefined;
     }
 
-    this.log.info('[Mistral] Storing API key and initializing client');
+    let after: string | undefined;
     try {
-      await this.context.secrets.store('MISTRAL_API_KEY', apiKey);
-      this.log.info('[Mistral] API key stored successfully');
-    } catch (e) {
-      this.log.warn('[Mistral] Failed to store API key in secret storage: ' + String(e));
+      await manager.setApiKey(input);
+      after = await manager.getApiKey();
+    } catch (error) {
+      this.log.warn('[Mistral] Failed to store API key in secret storage: ' + String(error));
+      this.client = new Mistral({ apiKey: input });
+      this.fetchedModels = null;
+      this.modelsCacheExpiry = 0;
+      this._onDidChangeLanguageModelChatInformation.fire(undefined);
+      return input;
     }
-    this.client = new Mistral({ apiKey });
-    this.fetchedModels = null;
-    this.modelsCacheExpiry = 0;
-    this._onDidChangeLanguageModelChatInformation.fire(undefined);
 
-    return apiKey;
+    if (!after) {
+      return undefined;
+    }
+
+    if (after !== before) {
+      this.log.info('[Mistral] API key updated');
+    }
+    if (!this.client) {
+      this.client = new Mistral({ apiKey: after });
+    }
+    return after;
   }
 
   /**
@@ -378,7 +474,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       return true;
     }
 
-    let apiKey: string | undefined = await this.context.secrets.get('MISTRAL_API_KEY');
+    const manager = await this.getApiKeyManager();
+    let apiKey: string | undefined = await manager.getApiKey();
     this.log.debug('[Mistral] initClient called (silent=' + silent + ', hasStoredKey=' + !!apiKey + ')');
     if (!silent && !apiKey) {
       apiKey = await this.setApiKey();
@@ -426,7 +523,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   async provideLanguageModelChatResponse(
     model: LanguageModelChatInformation,
-    messages: Array<LanguageModelChatMessage>,
+    messages: readonly LanguageModelChatRequestMessage[],
     options: ProvideLanguageModelChatResponseOptions,
     progress: Progress<LanguageModelResponsePart>,
     token: CancellationToken,
@@ -440,6 +537,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     // Check if client is initialized
     if (!this.client) {
       progress.report(new LanguageModelTextPart('Please add your Mistral API key to use Mistral AI.'));
+      return;
+    }
+
+    if (token.isCancellationRequested) {
+      progress.report(new LanguageModelTextPart('Request cancelled.'));
       return;
     }
 
@@ -485,132 +587,99 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       typeof modelOptions.temperature === 'number' ? modelOptions.temperature : (foundModel.temperature ?? 0.7);
     const topP = typeof modelOptions.topP === 'number' ? modelOptions.topP : (foundModel.top_p ?? undefined);
     const safePrompt = typeof modelOptions.safePrompt === 'boolean' ? modelOptions.safePrompt : undefined;
+    const responseFormat =
+      modelOptions.responseFormat && typeof modelOptions.responseFormat === 'object'
+        ? modelOptions.responseFormat
+        : undefined;
+    const randomSeed = typeof modelOptions.randomSeed === 'number' ? modelOptions.randomSeed : undefined;
+    const stop =
+      typeof modelOptions.stop === 'string'
+        ? modelOptions.stop
+        : Array.isArray(modelOptions.stop) && modelOptions.stop.every(item => typeof item === 'string')
+          ? modelOptions.stop
+          : undefined;
+    const presencePenalty = typeof modelOptions.presencePenalty === 'number' ? modelOptions.presencePenalty : undefined;
+    const frequencyPenalty =
+      typeof modelOptions.frequencyPenalty === 'number' ? modelOptions.frequencyPenalty : undefined;
+    const promptMode = modelOptions.promptMode === 'reasoning' ? 'reasoning' : undefined;
 
     try {
+      const abortSignal = cancellationTokenToAbortSignal(token);
+      const [{ normalizeMistralChunk }, { LLMStreamProcessor }] = await Promise.all([
+        import('@agentsy/core/normalizers'),
+        import('@agentsy/core/processor'),
+      ]);
+
       // Create chat completion request with streaming
-      const stream = await this.client.chat.stream({
-        model: model.id,
-        messages: mistralMessages,
-        maxTokens: Math.min(foundModel.defaultCompletionTokens, foundModel.maxOutputTokens),
-        temperature,
-        topP,
-        safePrompt,
-        tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
-        toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
-        parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
+      const stream = await this.client.chat.stream(
+        {
+          model: model.id,
+          messages: mistralMessages,
+          maxTokens: Math.min(foundModel.defaultCompletionTokens, foundModel.maxOutputTokens),
+          temperature,
+          topP,
+          safePrompt,
+          responseFormat: responseFormat as never,
+          randomSeed,
+          stop,
+          presencePenalty,
+          frequencyPenalty,
+          promptMode,
+          tools: shouldSendTools && foundModel.toolCalling ? mistralTools : undefined,
+          toolChoice: shouldSendTools && foundModel.toolCalling ? toolChoice : undefined,
+          parallelToolCalls: shouldSendTools && foundModel.toolCalling ? parallelToolCalls : undefined,
+        },
+        { signal: abortSignal },
+      );
+
+      const processor = new LLMStreamProcessor({
+        modelId: model.id,
+        accumulateNativeToolCalls: true,
+        onWarning: (msg, ctx) =>
+          this.log.warn('[Mistral] stream parser: ' + msg + (ctx ? ' ' + JSON.stringify(ctx) : '')),
       });
 
-      // Process streaming response
-      // Tool call deltas often arrive in multiple chunks. Buffer them until we have valid JSON.
-      const toolCallBuffers = new Map<string, { name?: string; argsText: string }>();
-      const emittedToolCalls = new Set<string>();
+      processor.on('usage', usage => {
+        this.log.info(`[Mistral] usage input=${usage.inputTokens ?? 0} output=${usage.outputTokens ?? 0}`);
+      });
+      processor.on('conversation_event', event => {
+        if (event.type === 'step_started' || event.type === 'step_finished') {
+          this.log.info(
+            `[Mistral] step ${event.stepIndex}` +
+              (event.usage ? ` (input=${event.usage.inputTokens ?? 0}, output=${event.usage.outputTokens ?? 0})` : ''),
+          );
+        } else if (event.type === 'step_updated') {
+          this.log.info(`[Mistral] step updated: ${event.stepIndex}`);
+        }
+      });
+      processor.on('tool_call_delta', delta => {
+        this.log.debug(`[Mistral] tool_call_delta ${delta.name}[${delta.index}] +${delta.argumentsDelta.length} chars`);
+      });
 
       for await (const event of stream) {
-        // Check if the operation was cancelled
-        if (token.isCancellationRequested) {
-          break;
-        }
+        if (token.isCancellationRequested) break;
 
-        // Handle the streaming chunk
-        const chunk = event.data;
-        this.log.debug('[Mistral] stream chunk received: ' + JSON.stringify(Object.keys(chunk || {})));
-        if (chunk.choices && chunk.choices.length > 0) {
-          const choice = chunk.choices[0];
-          const delta = choice.delta;
+        const normalized = normalizeMistralChunk(event.data);
+        if (!normalized) continue;
 
-          // Handle text content
-          if (delta?.content) {
-            // delta.content can be string or ContentChunk[]
-            const content =
-              typeof delta.content === 'string'
-                ? delta.content
-                : delta.content.map(c => ('text' in c ? c.text : '')).join('');
-            if (content) {
-              this.log.debug('[Mistral] streaming text chunk: ' + content.slice(0, 200));
-              progress.report(new LanguageModelTextPart(content));
-            }
-          }
+        this.log.debug('[Mistral] stream chunk received');
+        const output = processor.process(normalized.chunk);
+        this._emitParts(output.parts, progress);
+      }
 
-          // Handle tool calls. The SDK normalizes tool_calls -> toolCalls via its inbound Zod schema.
-          const deltaToolCalls = delta.toolCalls;
-          if (deltaToolCalls) {
-            for (const toolCall of deltaToolCalls) {
-              // The SDK defaults a missing id to the sentinel string "null" — skip those too.
-              const mistralId = toolCall.id;
-              if (!mistralId || mistralId === 'null') {
-                continue;
-              }
+      const final = processor.flush();
+      this._emitParts(final.parts, progress);
 
-              // Convert Mistral tool call ID to VS Code-compatible ID
-              const vsCodeId = this.getOrCreateVsCodeToolCallId(mistralId);
-
-              const buf = toolCallBuffers.get(vsCodeId) ?? { argsText: '' };
-              if (toolCall.function?.name) {
-                buf.name = toolCall.function.name;
-              }
-
-              const args = toolCall.function?.arguments;
-              if (typeof args === 'string') {
-                buf.argsText += args;
-              } else if (args && typeof args === 'object') {
-                // Some SDK versions provide the parsed object already
-                buf.argsText = JSON.stringify(args);
-              }
-
-              toolCallBuffers.set(vsCodeId, buf);
-
-              if (!emittedToolCalls.has(vsCodeId) && buf.name && buf.argsText) {
-                try {
-                  const parsedArgs: unknown = JSON.parse(buf.argsText);
-                  const parsedArgsObj: Record<string, unknown> =
-                    parsedArgs && typeof parsedArgs === 'object'
-                      ? (parsedArgs as Record<string, unknown>)
-                      : { value: parsedArgs };
-                  this.log.info(`[Mistral] Emitting tool call id=${vsCodeId} name=${buf.name}`);
-                  progress.report(new LanguageModelToolCallPart(vsCodeId, buf.name, parsedArgsObj));
-                  emittedToolCalls.add(vsCodeId);
-                } catch {
-                  // Not valid JSON yet; keep buffering.
-                }
-              }
-            }
-          }
-
-          // If we are at a finish boundary, flush any remaining tool calls with best-effort parsing.
-          // The SDK normalizes finish_reason -> finishReason via its inbound Zod schema.
-          const finishReason = choice.finishReason;
-          if (finishReason === 'tool_calls' || finishReason === 'stop') {
-            for (const [vsCodeId, buf] of toolCallBuffers) {
-              if (emittedToolCalls.has(vsCodeId) || !buf.name) {
-                continue;
-              }
-              let parsedArgs: unknown;
-              let parseError = false;
-              try {
-                parsedArgs = buf.argsText ? JSON.parse(buf.argsText) : {};
-              } catch (e) {
-                parseError = true;
-                this.log.warn(`[Mistral] Failed to parse tool call arguments for ${buf.name}: ${String(e)}`);
-                // Report the error to the user instead of emitting a malformed call
-                progress.report(
-                  new LanguageModelTextPart(`Tool call "${buf.name}" has invalid arguments and was skipped.`),
-                );
-                emittedToolCalls.add(vsCodeId);
-                continue;
-              }
-              if (parseError) continue;
-              const parsedArgsObj: Record<string, unknown> =
-                parsedArgs && typeof parsedArgs === 'object'
-                  ? (parsedArgs as Record<string, unknown>)
-                  : { value: parsedArgs };
-              this.log.info(`[Mistral] Flushing tool call id=${vsCodeId} name=${buf.name}`);
-              progress.report(new LanguageModelToolCallPart(vsCodeId, buf.name, parsedArgsObj));
-              emittedToolCalls.add(vsCodeId);
-            }
-          }
-        }
+      if (final.incomplete) {
+        this.log.warn(
+          '[Mistral] stream ended with incomplete content: ' + final.incompleteness.map(i => i.type).join(', '),
+        );
       }
     } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || token.isCancellationRequested)) {
+        this.log.info('[Mistral] Request cancelled');
+        return;
+      }
       const errorMessage = getUserFriendlyError(error);
       this.log.error(
         '[Mistral] provideLanguageModelChatResponse error: ' +
@@ -621,13 +690,140 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   }
 
   /**
+   * Stream a participant response directly from Mistral using @agentsy/vscode renderer.
+   */
+  public async streamParticipantResponse(
+    modelId: string | undefined,
+    messages: readonly LanguageModelChatRequestMessage[],
+    stream: ChatResponseStream,
+    token: CancellationToken,
+  ): Promise<void> {
+    this.clearToolCallIdMappings();
+
+    if (token.isCancellationRequested) {
+      stream.markdown('Request cancelled.');
+      return;
+    }
+
+    const initialized = await this.initClient(true);
+    if (!initialized || !this.client) {
+      stream.markdown('Please add your Mistral API key to use Mistral AI.');
+      return;
+    }
+
+    const models = await this.fetchModels();
+    const selectedModel = (modelId ? models.find(model => model.id === modelId) : undefined) ??
+      models[0] ?? {
+        id: modelId ?? 'mistral-large-latest',
+        name: modelId ?? 'Mistral',
+        maxInputTokens: 32768,
+        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
+        toolCalling: false,
+        supportsParallelToolCalls: false,
+        supportsVision: false,
+      };
+
+    const mistralMessages = this.toMistralMessages(messages);
+
+    try {
+      const [{ createVSCodeAgentLoop, cancellationTokenToAbortSignal }, { normalizeMistralChunk }] = await Promise.all([
+        import('@agentsy/vscode'),
+        import('@agentsy/core/normalizers'),
+      ]);
+
+      const renderer = createVSCodeAgentLoop({
+        stream: stream as unknown as AgentsyChatResponseStreamCompat,
+        thinkingStyle: 'progress',
+        abortSignal: cancellationTokenToAbortSignal(token),
+        onFinish: (finishReason, usage) => {
+          this.log.info(
+            '[Mistral] participant stream finished: ' +
+              String(finishReason ?? 'unknown') +
+              (usage ? ` (input=${usage.inputTokens ?? 0}, output=${usage.outputTokens ?? 0})` : ''),
+          );
+        },
+        onStep: (stepIndex, usage) => {
+          this.log.info(
+            `[Mistral] participant step ${stepIndex}` +
+              (usage ? ` (input=${usage.inputTokens ?? 0}, output=${usage.outputTokens ?? 0})` : ''),
+          );
+        },
+        onToolCallDelta: delta => {
+          this.log.debug(
+            `[Mistral] participant tool_call_delta ${delta.name}[${delta.index}] +${delta.argumentsDelta.length} chars`,
+          );
+        },
+      });
+
+      const mistralStream = await this.client.chat.stream(
+        {
+          model: selectedModel.id,
+          messages: mistralMessages,
+          maxTokens: Math.min(selectedModel.defaultCompletionTokens, selectedModel.maxOutputTokens),
+          temperature: selectedModel.temperature ?? 0.7,
+          topP: selectedModel.top_p,
+        },
+        { signal: cancellationTokenToAbortSignal(token) },
+      );
+
+      for await (const event of mistralStream) {
+        if (token.isCancellationRequested) {
+          break;
+        }
+        const normalized = normalizeMistralChunk(event.data);
+        if (!normalized) {
+          continue;
+        }
+        await renderer.writeChunk(normalized.chunk);
+      }
+
+      await renderer.end();
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'AbortError' || token.isCancellationRequested)) {
+        this.log.info('[Mistral] Participant request cancelled');
+        return;
+      }
+      this.log.error(
+        '[Mistral] streamParticipantResponse error: ' +
+          (error instanceof Error ? error.stack || error.message : String(error)),
+      );
+      stream.markdown(getUserFriendlyError(error));
+    }
+  }
+
+  /**
+   * Translate OutputPart instances from @agentsy/core into VS Code LanguageModelResponseParts.
+   */
+  private _emitParts(parts: OutputPart[], progress: Progress<LanguageModelResponsePart>): void {
+    for (const part of parts) {
+      if (part.type === 'text') {
+        this.log.debug('[Mistral] streaming text chunk: ' + part.text.slice(0, 200));
+        progress.report(new LanguageModelTextPart(part.text));
+      } else if (part.type === 'thinking') {
+        this.log.debug('[Mistral] thinking: ' + part.text.slice(0, 200));
+        // Thinking content logged only; no stable VS Code API yet.
+      } else if (part.type === 'tool_call') {
+        const callId = part.call.id ?? this.generateToolCallId();
+        const vsCodeId = this.getOrCreateVsCodeToolCallId(callId);
+        this.log.info(`[Mistral] Emitting tool call id=${vsCodeId} name=${part.call.name}`);
+        progress.report(new LanguageModelToolCallPart(vsCodeId, part.call.name, part.call.parameters));
+      } else if (part.type === 'tool_call_delta') {
+        // Deltas are internal stream fragments; complete calls are emitted as tool_call.
+        this.log.debug(`[Mistral] tool_call_delta ${part.name}[${part.index}] +${part.argumentsDelta.length} chars`);
+      }
+      // tool_call_delta: only emitted when accumulateNativeToolCalls=false; unused here.
+    }
+  }
+
+  /**
    * Convert VS Code chat messages into Mistral Chat Completion messages.
    *
    * Key rules (mirrors OpenAI/Mistral constraints):
    * - Assistant messages MUST have either non-empty content OR tool_calls.
    * - Tool results MUST be sent as role="tool" messages with tool_call_id.
    */
-  public toMistralMessages(messages: readonly LanguageModelChatMessage[]): MistralMessage[] {
+  public toMistralMessages(messages: readonly LanguageModelChatRequestMessage[]): MistralMessage[] {
     this.log.debug('[Mistral] toMistralMessages called with ' + messages.length + ' messages');
     const out: MistralMessage[] = [];
     const toolNameByCallId = new Map<string, string>();
@@ -730,6 +926,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
             toolCalls: hasToolCalls ? toolCalls : undefined,
           });
         }
+      } else if (role === 'system') {
+        if (typeof messageContent === 'string') {
+          out.push({ role: 'system', content: messageContent });
+        }
       } else {
         if (messageContent !== undefined) {
           out.push({ role: 'user', content: messageContent });
@@ -755,7 +955,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   async provideTokenCount(
     _model: LanguageModelChatInformation,
-    text: string | LanguageModelChatMessage,
+    text: string | LanguageModelChatRequestMessage,
     _token: CancellationToken,
   ): Promise<number> {
     // Keep a cached encoding instance; do not free it per-call.
@@ -797,13 +997,17 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 /**
  * Convert VS Code message role to Mistral role
  */
-export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' {
+export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' | 'system' {
+  if ((role as unknown as number) === 3) {
+    return 'system';
+  }
   switch (role) {
     case LanguageModelChatMessageRole.User:
       return 'user';
     case LanguageModelChatMessageRole.Assistant:
       return 'assistant';
     default:
+      console.warn('[Mistral] Unknown role value; defaulting to user:', role);
       return 'user';
   }
 }

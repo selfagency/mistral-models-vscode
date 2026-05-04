@@ -1,5 +1,53 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
 import { MistralChatModelProvider, formatModelName } from './provider.js';
+
+const mockWriteChunk = vi.fn(async () => {});
+const mockEnd = vi.fn(async () => {});
+
+vi.mock('@agentsy/vscode', () => ({
+  ApiKeyManager: class {
+    private key: string | undefined;
+
+    constructor(
+      private readonly context: {
+        secrets: { get(key: string): Promise<string | undefined>; store(key: string, value: string): Promise<void> };
+      },
+      _config: unknown,
+    ) {}
+
+    async initialize() {
+      this.key = await this.context.secrets.get('MISTRAL_API_KEY');
+    }
+
+    async getApiKey() {
+      return this.key;
+    }
+
+    async setApiKey(key?: string) {
+      if (!key) return;
+      await this.context.secrets.store('MISTRAL_API_KEY', key);
+      this.key = key;
+    }
+
+    onDidChangeApiKey(_listener: unknown) {}
+  },
+  createVSCodeAgentLoop: vi.fn().mockImplementation(() => ({
+    write: vi.fn(async () => {}),
+    writeChunk: mockWriteChunk,
+    end: mockEnd,
+  })),
+  cancellationTokenToAbortSignal: vi.fn().mockImplementation(() => new AbortController().signal),
+}));
+
+vi.mock('@agentsy/core/normalizers', () => ({
+  normalizeMistralChunk: vi.fn().mockImplementation((raw: unknown) => {
+    if (!raw) {
+      return null;
+    }
+    return { chunk: { content: 'ok' } };
+  }),
+}));
 
 // ── Phase 5: Additional Integration Tests ──────────────────────────────────
 
@@ -125,5 +173,93 @@ describe('Model Name Formatting', () => {
 
   it('should handle model names with underscores', () => {
     expect(formatModelName('mistral_medium')).toBe('Mistral_medium');
+  });
+});
+
+describe('Participant Streaming', () => {
+  let provider: MistralChatModelProvider;
+
+  const mockContext = {
+    secrets: {
+      get: vi.fn().mockResolvedValue(undefined),
+      store: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      onDidChange: vi.fn(),
+    },
+    subscriptions: [],
+  } as any;
+
+  const createStream = () => ({
+    markdown: vi.fn(),
+    progress: vi.fn(),
+    anchor: vi.fn(),
+    reference: vi.fn(),
+    button: vi.fn(),
+    filetree: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    provider = new MistralChatModelProvider(mockContext, undefined, false);
+  });
+
+  it('should prompt to set API key when no client is initialized', async () => {
+    const stream = createStream();
+
+    await provider.streamParticipantResponse(
+      'mistral-large-latest',
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
+      stream as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+    );
+
+    expect(stream.markdown).toHaveBeenCalledWith('Please add your Mistral API key to use Mistral AI.');
+  });
+
+  it('should stream normalized chunks through agentsy renderer', async () => {
+    const stream = createStream();
+    (provider as any).client = {
+      chat: {
+        stream: vi.fn().mockResolvedValue(
+          (async function* () {
+            yield { data: { choices: [{ delta: { content: 'hello' } }] } };
+          })(),
+        ),
+      },
+    };
+    vi.spyOn(provider, 'fetchModels').mockResolvedValue([
+      {
+        id: 'mistral-large-latest',
+        name: 'Mistral Large Latest',
+        maxInputTokens: 32000,
+        maxOutputTokens: 8000,
+        defaultCompletionTokens: 4000,
+        toolCalling: false,
+        supportsParallelToolCalls: false,
+      },
+    ] as any);
+
+    await provider.streamParticipantResponse(
+      'mistral-large-latest',
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
+      stream as any,
+      { isCancellationRequested: false, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+    );
+
+    expect(mockWriteChunk).toHaveBeenCalled();
+    expect(mockEnd).toHaveBeenCalled();
+  });
+
+  it('should emit cancellation message when token is already cancelled', async () => {
+    const stream = createStream();
+
+    await provider.streamParticipantResponse(
+      'mistral-large-latest',
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
+      stream as any,
+      { isCancellationRequested: true, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+    );
+
+    expect(stream.markdown).toHaveBeenCalledWith('Request cancelled.');
   });
 });

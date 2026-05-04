@@ -1,6 +1,6 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { defineConfig } from 'tsup'
+import fs from 'node:fs';
+import path from 'node:path';
+import { defineConfig } from 'tsup';
 
 const production = process.env.NODE_ENV === 'production'
 

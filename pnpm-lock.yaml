@@ -8,12 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@agentsy/core':
+        specifier: ^0.1.0
+        version: 0.1.0
+      '@agentsy/vscode':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@mistralai/mistralai':
         specifier: ^1.14.1
         version: 1.14.1
-      '@selfagency/llm-stream-parser':
-        specifier: ^0.3.1
-        version: 0.3.1
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
@@ -80,6 +83,12 @@ importers:
         version: 8.8.5
 
 packages:
+
+  '@agentsy/core@0.1.0':
+    resolution: {integrity: sha512-oZDMBSD4Ccty5+up5tupc9DczyqvvM2P8LCVjSX3VTIUc9PMmUTH2NDKKfCrfYKxBj0PYoX+5pw3F5b55Td9dw==}
+
+  '@agentsy/vscode@0.1.0':
+    resolution: {integrity: sha512-pZJ5fEb8Vha4QiIsV7c8UpIfb6BjgYVZUqPQAuWeEWR3bpaDitUUQz7ye+BaHgrA/Mv5R3dlR0gjFftn1hhTnw==}
 
   '@babel/helper-string-parser@7.27.1':
     resolution: {integrity: sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA==}
@@ -749,9 +758,6 @@ packages:
     resolution: {integrity: sha512-2HRCml6OztYXyJXAvdDXPKcawukWY2GpR5/nxKp4iBgiO3wcoEGkAaqctIbZcNB6KlUQBIqt8VYkNSj2397EfA==}
     cpu: [x64]
     os: [win32]
-
-  '@selfagency/llm-stream-parser@0.3.1':
-    resolution: {integrity: sha512-YHLrEzTcR4xQW+5W9DZBsfMNKmJ4/PLTzuKo9J8dm71oXjiUozJS53Aa4hDI+g3JWvKWZ5tZPcxXmj8nFK0Eyg==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -2511,6 +2517,10 @@ packages:
 
 snapshots:
 
+  '@agentsy/core@0.1.0': {}
+
+  '@agentsy/vscode@0.1.0': {}
+
   '@babel/helper-string-parser@7.27.1': {}
 
   '@babel/helper-validator-identifier@7.28.5': {}
@@ -2910,8 +2920,6 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
-
-  '@selfagency/llm-stream-parser@0.3.1': {}
 
   '@standard-schema/spec@1.1.0': {}
 

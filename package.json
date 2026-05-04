@@ -86,8 +86,9 @@
     "onChatParticipant:mistral-models-vscode.mistral"
   ],
   "dependencies": {
+    "@agentsy/core": "^0.1.0",
+    "@agentsy/vscode": "^0.1.0",
     "@mistralai/mistralai": "^1.14.1",
-    "@selfagency/llm-stream-parser": "^0.3.1",
     "tiktoken": "^1.0.22"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ export function activate(context: vscode.ExtensionContext) {
       ? vscode.window.createOutputChannel('Mistral Models', { log: true })
       : undefined;
 
-  const provider = new MistralChatModelProvider(context, logOutputChannel as any, true);
+  const provider = new MistralChatModelProvider(context, logOutputChannel, true);
   context.subscriptions.push(
     vscode.lm.registerLanguageModelChatProvider('mistral', provider),
     vscode.commands.registerCommand('mistral-chat.manageApiKey', async () => {
@@ -57,12 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
     messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
 
     try {
-      const response = await request.model.sendRequest(messages, {}, token);
-      for await (const chunk of response.stream) {
-        if (chunk instanceof vscode.LanguageModelTextPart) {
-          stream.markdown(chunk.value);
-        }
-      }
+      await provider.streamParticipantResponse(request.model?.id, messages, stream, token);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       stream.markdown(`Error: ${message}`);

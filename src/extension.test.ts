@@ -5,15 +5,19 @@ import {
   ChatResponseMarkdownPart,
   ChatResponseTurn,
   commands,
-  LanguageModelTextPart,
   lm,
   MarkdownString,
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
+const mockProviderInstance = {
+  setApiKey: vi.fn(),
+  streamParticipantResponse: vi.fn().mockResolvedValue(undefined),
+};
+
 vi.mock('./provider', () => ({
   MistralChatModelProvider: vi.fn().mockImplementation(function () {
-    return { setApiKey: vi.fn() };
+    return mockProviderInstance;
   }),
 }));
 
@@ -25,6 +29,8 @@ describe('extension', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockProviderInstance.setApiKey.mockResolvedValue(undefined);
+    mockProviderInstance.streamParticipantResponse.mockResolvedValue(undefined);
   });
 
   describe('activate', () => {
@@ -64,64 +70,53 @@ describe('extension', () => {
       return handler;
     }
 
-    it('sends history + prompt to request.model.sendRequest', async () => {
+    it('sends history + prompt to provider.streamParticipantResponse', async () => {
       const handler = await getHandler();
 
-      const mockStream = { markdown: vi.fn() };
-      const mockResponse = {
-        stream: (async function* () {
-          yield new LanguageModelTextPart('world');
-        })(),
-      };
-      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
+      const mockStream = { markdown: vi.fn(), progress: vi.fn() };
 
-      const mockRequest = { prompt: 'hello', model: { sendRequest: mockSendRequest } };
+      const mockRequest = { prompt: 'hello', model: { id: 'mistral-large-latest' } };
       const mockChatContext = { history: [] };
       const mockToken = { isCancellationRequested: false };
 
       await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
-      expect(mockSendRequest).toHaveBeenCalledOnce();
-      const [messages] = mockSendRequest.mock.calls[0];
+      expect(mockProviderInstance.streamParticipantResponse).toHaveBeenCalledOnce();
+      const [modelId, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
+      expect(modelId).toBe('mistral-large-latest');
       // Last message is the current prompt
       expect(messages.at(-1).content).toBe('hello');
     });
 
-    it('streams text chunks back as markdown', async () => {
+    it('passes stream object through to provider', async () => {
       const handler = await getHandler();
 
-      const mockStream = { markdown: vi.fn() };
-      const mockResponse = {
-        stream: (async function* () {
-          yield new LanguageModelTextPart('chunk1');
-          yield new LanguageModelTextPart('chunk2');
-        })(),
-      };
-      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
+      const mockStream = { markdown: vi.fn(), progress: vi.fn() };
 
-      await handler({ prompt: 'test', model: { sendRequest: mockSendRequest } }, { history: [] }, mockStream, {
+      await handler({ prompt: 'test', model: { id: 'mistral-small-latest' } }, { history: [] }, mockStream, {
         isCancellationRequested: false,
       });
 
-      expect(mockStream.markdown).toHaveBeenCalledWith('chunk1');
-      expect(mockStream.markdown).toHaveBeenCalledWith('chunk2');
+      expect(mockProviderInstance.streamParticipantResponse).toHaveBeenCalledWith(
+        'mistral-small-latest',
+        expect.any(Array),
+        mockStream,
+        expect.any(Object),
+      );
     });
 
     it('includes prior ChatRequestTurn as a User message in history', async () => {
       const handler = await getHandler();
 
-      const mockResponse = { stream: (async function* () {})() };
-      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
-
       const priorRequest = new (ChatRequestTurn as any)('prior question');
       await handler(
-        { prompt: 'follow-up', model: { sendRequest: mockSendRequest } },
+        { prompt: 'follow-up', model: { id: 'mistral-large-latest' } },
         { history: [priorRequest] },
-        { markdown: vi.fn() },
+        { markdown: vi.fn(), progress: vi.fn() },
         { isCancellationRequested: false },
       );
 
-      const [messages] = mockSendRequest.mock.calls[0];
+      const [, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
       expect(messages[0].content).toBe('prior question');
       expect(messages[1].content).toBe('follow-up');
     });
@@ -129,30 +124,27 @@ describe('extension', () => {
     it('includes prior ChatResponseTurn as an Assistant message in history', async () => {
       const handler = await getHandler();
 
-      const mockResponse = { stream: (async function* () {})() };
-      const mockSendRequest = vi.fn().mockResolvedValue(mockResponse);
-
       const priorResponse = new (ChatResponseTurn as any)([
         new (ChatResponseMarkdownPart as any)(new (MarkdownString as any)('prior answer')),
       ]);
       await handler(
-        { prompt: 'next', model: { sendRequest: mockSendRequest } },
+        { prompt: 'next', model: { id: 'mistral-large-latest' } },
         { history: [priorResponse] },
-        { markdown: vi.fn() },
+        { markdown: vi.fn(), progress: vi.fn() },
         { isCancellationRequested: false },
       );
 
-      const [messages] = mockSendRequest.mock.calls[0];
+      const [, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
       expect(messages[0].content).toBe('prior answer');
     });
 
     it('surfaces errors as a markdown message', async () => {
       const handler = await getHandler();
 
-      const mockStream = { markdown: vi.fn() };
-      const mockSendRequest = vi.fn().mockRejectedValue(new Error('model unavailable'));
+      const mockStream = { markdown: vi.fn(), progress: vi.fn() };
+      mockProviderInstance.streamParticipantResponse.mockRejectedValueOnce(new Error('model unavailable'));
 
-      await handler({ prompt: 'hi', model: { sendRequest: mockSendRequest } }, { history: [] }, mockStream, {
+      await handler({ prompt: 'hi', model: { id: 'mistral-large-latest' } }, { history: [] }, mockStream, {
         isCancellationRequested: false,
       });
 

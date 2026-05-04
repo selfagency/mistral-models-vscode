@@ -7,9 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-05-03
-
 ### Added
+
 - **Model Caching**: Implemented 30-minute TTL cache for model list to reduce API calls and improve performance
 - **Friendly Error Messages**: User-friendly error handling for HTTP 401 (authentication), 429 (rate limiting), 500 (service errors), and network failures
 - **Event Notifications**: Added `onDidChangeLanguageModelChatInformation` event firing when API key changes, enabling real-time model list updates in VS Code
@@ -17,62 +16,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Expansion**: Comprehensive integration test suite covering cache behavior, event management, tool call ID mapping, and model formatting (128 tests, 100% passing)
 
 ### Changed
+
 - Improved tool call buffering in stream handler for more robust JSON parsing from LLM streams
 - Enhanced error handling to distinguish between different failure scenarios (authentication, rate limiting, service availability)
 - Optimized model caching with automatic expiry and manual reset on API key change
 
 ### Fixed
+
 - Fixed Dependabot empty ecosystem configuration in GitHub Actions workflow
 - Removed redundant tsup entry point configuration
 - Reduced CI overhead by removing unnecessary xvfb-run setup for headless tests
 
 ### Deprecated
+
 - Model refreshing now uses intelligent TTL caching instead of on-demand fetches
 
+## [1.0.9] - 2026-03-05
+
+## What's Changed
+
+- fix: resolve model display and extension activation issues by @selfagency in <https://github.com/selfagency/mistral-models-vscode/pull/4>
+
+**Full Changelog**: <https://github.com/selfagency/mistral-models-vscode/compare/v0.1.8...v1.0.9>
 
 ## [1.0.9] - 2026-03-05
 
 ## What's Changed
-* fix: resolve model display and extension activation issues by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/4
 
+- fix: resolve model display and extension activation issues by @selfagency in <https://github.com/selfagency/mistral-models-vscode/pull/4>
 
-**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.8...v1.0.9
-## [1.0.9] - 2026-03-05
-
-## What's Changed
-* fix: resolve model display and extension activation issues by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/4
-
-
-**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.8...v1.0.9
+**Full Changelog**: <https://github.com/selfagency/mistral-models-vscode/compare/v0.1.8...v1.0.9>
 
 _Source: changes from v0.1.8 to v1.0.9._
 
 ## [0.1.8] - 2026-03-04
 
 ## What's Changed
-* ui: show 'Mistral AI' in manage models detail by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/3
-* ci: run tests on release tag pushes by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/2
 
+- ui: show 'Mistral AI' in manage models detail by @selfagency in <https://github.com/selfagency/mistral-models-vscode/pull/3>
 
-**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.7...v0.1.8
+- ci: run tests on release tag pushes by @selfagency in <https://github.com/selfagency/mistral-models-vscode/pull/2>
+
+**Full Changelog**: <https://github.com/selfagency/mistral-models-vscode/compare/v0.1.7...v0.1.8>
 
 _Source: changes from v0.1.7 to v0.1.8._
 
 ## [0.1.7] - 2026-03-04
 
 ## What's Changed
-* Show 'Mistral AI' in manage models dropdown by @selfagency in https://github.com/selfagency/mistral-models-vscode/pull/1
+
+- Show 'Mistral AI' in manage models dropdown by @selfagency in <https://github.com/selfagency/mistral-models-vscode/pull/1>
 
 ## New Contributors
-* @selfagency made their first contribution in https://github.com/selfagency/mistral-models-vscode/pull/1
 
-**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.6...v0.1.7
+- @selfagency made their first contribution in <https://github.com/selfagency/mistral-models-vscode/pull/1>
+
+**Full Changelog**: <https://github.com/selfagency/mistral-models-vscode/compare/v0.1.6...v0.1.7>
 
 _Source: changes from v0.1.6 to v0.1.7._
 
 ## [0.1.6] - 2026-03-01
 
-**Full Changelog**: https://github.com/selfagency/mistral-models-vscode/compare/v0.1.5...v0.1.6
+**Full Changelog**: <https://github.com/selfagency/mistral-models-vscode/compare/v0.1.5...v0.1.6>
 
 _Source: changes from v0.1.5 to v0.1.6._
 

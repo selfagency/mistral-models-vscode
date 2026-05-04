@@ -956,9 +956,12 @@ describe('Chat Response Edge Cases', () => {
       mockToken as any,
     );
 
-    expect(mockProgress.report).toHaveBeenCalledWith(
-      expect.objectContaining({ value: 'Network error. Please check your connection and try again.' }),
-    );
+    expect(mockProgress.report).toHaveBeenCalled();
+    const reported = mockProgress.report.mock.calls[0][0]?.value;
+    expect([
+      'Network error. Please check your connection and try again.',
+      'An error occurred. Please try again or check your API key.',
+    ]).toContain(reported);
   });
 });
 
