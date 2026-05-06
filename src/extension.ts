@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (text) {
           messages.push(vscode.LanguageModelChatMessage.Assistant(text));
         }
-      } else if (ChatResponseTurn2 && (turn as any) instanceof ChatResponseTurn2) {
+      } else if (ChatResponseTurn2 && (turn as unknown) instanceof ChatResponseTurn2) {
         // Handle ChatResponseTurn2 (VS Code 1.96+)
         const response =
           typeof turn === 'object' && turn !== null && 'response' in turn
