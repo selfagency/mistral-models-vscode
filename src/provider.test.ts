@@ -637,7 +637,7 @@ describe('Set API Key Edge Cases', () => {
     vi.spyOn(mockContext.secrets, 'store').mockResolvedValue(undefined);
 
     const result = await provider.setApiKey();
-    expect(result).toBe(mockApiKey);
+    expect(result).toBe(mockApiKey.trim());
   });
 
   it('should handle API key with special characters', async () => {
