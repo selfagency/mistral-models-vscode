@@ -1,10 +1,12 @@
 # Mistral Models VS Code Extension — Implementation Plan
 
 **Repository:** <https://github.com/selfagency/mistral-models-vscode>
-**Scope:** Fix 40+ issues + upgrade to llm-stream-parser best practices
+**Scope:** Fix 40+ issues + upgrade to current Agentsy layered package model
 **Timeline:** 4 weeks (4 phases)
 **Effort:** ~80-100 hours
-**Status:** Draft — Ready for approval and phased execution
+**Status:** SUPPLANTED — This plan references deprecated `@selfagency/llm-stream-parser`; extension now uses published split packages `@agentsy/vscode`, `@agentsy/normalizers`, and `@agentsy/processor` per [Agentsy migration guide](https://agentsy.self.agency/migrating-from-llm-stream-parser.html)
+
+> **NOTE (2026-05-06)**: Extension has migrated away from `@selfagency/llm-stream-parser` to current `@agentsy/*` layered packages. Direct `@agentsy/core` dependency has been removed. See CHANGELOG.md and session plan in `/memories/session/plan.md` for current migration status. Phase 0 (Dependency Audit) sections below reference superseded packages and are retained for historical reference only; active migration tasks now target `@agentsy/*` package alignment and deprecation cleanup.
 
 ---
 
