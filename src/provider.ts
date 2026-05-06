@@ -435,9 +435,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       // Deduplicate by model id to avoid repeated entries and map to our MistralModel shape.
       const byId = new Map<string, any>();
       for (const m of response.data ?? []) {
-        if (!m || !m.id) continue;
-        if (!m.capabilities?.completionChat) continue;
-        if (!byId.has(m.id)) byId.set(m.id, m);
+        if (!m || typeof m !== 'object') continue;
+        if (!('id' in m) || !m.id) continue;
+        if (!('capabilities' in m) || !m.capabilities?.completionChat) continue;
+        if (!byId.has(m.id)) byId.set(m.id, m as any);
       }
       const rawModels = Array.from(byId.values()).map(m => ({
         id: m.id,
