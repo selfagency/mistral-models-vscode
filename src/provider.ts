@@ -1,6 +1,7 @@
 import { Mistral } from '@mistralai/mistralai';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import { trace } from '@opentelemetry/api';
+import { cancellationTokenToAbortSignal } from '@agentsy/vscode';
 import {
   CancellationToken,
   ChatResponseStream,
@@ -28,16 +29,6 @@ type OutputPart =
   | { type: 'thinking'; text: string }
   | { type: 'tool_call'; call: { id?: string; name: string; parameters: Record<string, unknown> } }
   | { type: 'tool_call_delta'; id?: string; name: string; argumentsDelta: string; index: number };
-
-const cancellationTokenToAbortSignal = (token: CancellationToken): AbortSignal => {
-  const controller = new AbortController();
-  if (token.isCancellationRequested) {
-    controller.abort();
-  } else {
-    token.onCancellationRequested(() => controller.abort());
-  }
-  return controller.signal;
-};
 
 interface AgentsyChatResponseStreamCompat {
   markdown(content: string): void;
@@ -736,16 +727,31 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     });
 
     try {
+      if (!this.client) throw new Error('Mistral client not initialized');
+
       const abortSignal = cancellationTokenToAbortSignal(token);
-      const [{ normalizeMistralChunk }, { LLMStreamProcessor }] = await Promise.all([
+      const [{ createVSCodeChatRenderer }, { normalizeMistralChunk }, { LLMStreamProcessor }] = await Promise.all([
+        import('@agentsy/vscode'),
         import('@agentsy/normalizers'),
         import('@agentsy/processor'),
       ]);
 
+      // Adapter: wrap Progress as AgentsyChatResponseStreamCompat for the renderer
+      const rendererStream: AgentsyChatResponseStreamCompat = {
+        markdown: (content: string) => progress.report(new LanguageModelTextPart(content)),
+        progress: (content: string) => progress.report(new LanguageModelTextPart(content)),
+        anchor: () => {}, // Not used for VS Code chat
+        reference: () => {}, // Not used for VS Code chat
+        button: () => {}, // Not used for VS Code chat
+        filetree: () => {}, // Not used for VS Code chat
+      };
+
+      const renderer = createVSCodeChatRenderer({ stream: rendererStream });
+
       // Create chat completion request with streaming (wrapped in retry logic)
       const stream = await withRetry(
         async () =>
-          this.client.chat.stream(
+          this.client!.chat.stream(
             {
               model: model.id,
               messages: mistralMessages,
@@ -799,6 +805,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         this.log.debug(`[Mistral] tool_call_delta ${delta.name}[${delta.index}] +${delta.argumentsDelta.length} chars`);
       });
 
+      // Connect processor events to renderer for markdown output
+      processor.on('text', text => renderer.markdown(text));
+
       // Track Time To First Token (TTFT)
       const startTime = Date.now();
       let ttft: number | undefined;
@@ -819,11 +828,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
         this.log.debug('[Mistral] stream chunk received');
         const output = processor.process(normalized.chunk);
-        this._emitParts(output.parts, progress);
+        this._emitToolParts(output.parts, progress);
       }
 
       const final = processor.flush();
-      this._emitParts(final.parts, progress);
+      this._emitToolParts(final.parts, progress);
 
       if (final.incomplete) {
         this.log.warn(
@@ -900,7 +909,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     });
 
     try {
-      const [{ createVSCodeAgentLoop, cancellationTokenToAbortSignal }, { normalizeMistralChunk }] = await Promise.all([
+      const [{ createVSCodeAgentLoop }, { normalizeMistralChunk }] = await Promise.all([
         import('@agentsy/vscode'),
         import('@agentsy/normalizers'),
       ]);
@@ -909,29 +918,13 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         stream: stream as unknown as AgentsyChatResponseStreamCompat,
         thinkingStyle: 'progress',
         abortSignal: cancellationTokenToAbortSignal(token),
-        onFinish: (finishReason, usage) => {
-          this.log.info(
-            '[Mistral] participant stream finished: ' +
-              String(finishReason ?? 'unknown') +
-              (usage ? ` (input=${usage.inputTokens ?? 0}, output=${usage.outputTokens ?? 0})` : ''),
-          );
-        },
-        onStep: (stepIndex, usage) => {
-          this.log.info(
-            `[Mistral] participant step ${stepIndex}` +
-              (usage ? ` (input=${usage.inputTokens ?? 0}, output=${usage.outputTokens ?? 0})` : ''),
-          );
-        },
-        onToolCallDelta: delta => {
-          this.log.debug(
-            `[Mistral] participant tool_call_delta ${delta.name}[${delta.index}] +${delta.argumentsDelta.length} chars`,
-          );
-        },
       });
+
+      if (!this.client) throw new Error('Mistral client not initialized');
 
       const mistralStream = await withRetry(
         () =>
-          this.client.chat.stream(
+          this.client!.chat.stream(
             {
               model: selectedModel.id,
               messages: mistralMessages,
@@ -989,6 +982,27 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   /**
    * Translate OutputPart instances from @agentsy/processor into VS Code LanguageModelResponseParts.
    */
+  private _emitToolParts(parts: OutputPart[], progress: Progress<LanguageModelResponsePart>): void {
+    for (const part of parts) {
+      if (part.type === 'text') {
+        // Text is now handled by createVSCodeChatRenderer; skip here
+        this.log.debug('[Mistral] text chunk (handled by renderer)');
+      } else if (part.type === 'thinking') {
+        // Thinking content logged only; no stable VS Code API yet.
+        this.log.debug('[Mistral] thinking: ' + part.text.slice(0, 200));
+      } else if (part.type === 'tool_call') {
+        // Tool calls are VS Code-specific and must be emitted directly
+        const callId = part.call.id ?? this.generateToolCallId();
+        const vsCodeId = this.getOrCreateVsCodeToolCallId(callId);
+        this.log.info(`[Mistral] Emitting tool call id=${vsCodeId} name=${part.call.name}`);
+        progress.report(new LanguageModelToolCallPart(vsCodeId, part.call.name, part.call.parameters));
+      } else if (part.type === 'tool_call_delta') {
+        // Deltas are internal stream fragments; complete calls are emitted as tool_call.
+        this.log.debug(`[Mistral] tool_call_delta ${part.name}[${part.index}] +${part.argumentsDelta.length} chars`);
+      }
+    }
+  }
+
   private _emitParts(parts: OutputPart[], progress: Progress<LanguageModelResponsePart>): void {
     for (const part of parts) {
       if (part.type === 'text') {
