@@ -1,6 +1,33 @@
-import { processRawStream, toMistralMessages as adaptersToMistralMessages } from '@agentsy/adapters';
+// Removed duplicate isAsyncIterable, toAsyncIterable helpers
+// Remove broken import of isAsyncIterable, toAsyncIterable
+
+function isAsyncIterable<T>(obj: unknown): obj is AsyncIterable<T> {
+  return obj !== null && typeof obj === 'object' && Symbol.asyncIterator in obj;
+}
+
+function toAsyncIterable<T>(iterable: Iterable<T>): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const item of iterable) {
+        yield item;
+      }
+    },
+  };
+}
+// Added isAsyncIterable, toAsyncIterable for async iterable fix
+import { toMistralMessages as adaptersToMistralMessages, processRawStream } from '@agentsy/adapters';
 import { normalizeMistralChunk } from '@agentsy/normalizers';
-import { extractXmlToolCalls, type OutputPart } from '@agentsy/tool-calls';
+import { type OutputPart } from '@agentsy/processor';
+import { extractXmlToolCalls } from '@agentsy/tool-calls';
+import {
+  accumulateToolCallDeltas,
+  cancellationTokenToAbortSignal,
+  createVSCodeAgentLoop,
+  createVSCodeChatRenderer,
+  mapUsageToVSCode,
+  ToolCallDeltaAccumulator,
+  toVSCodeToolCallPart,
+} from '@agentsy/vscode';
 import { createXmlStreamFilter, type XmlStreamFilter } from '@agentsy/xml-filter';
 import { Mistral } from '@mistralai/mistralai';
 import { trace } from '@opentelemetry/api';
@@ -414,7 +441,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
 
     await this.apiKeyManagerInitPromise;
-    this.apiKeyManager ??= new Error('Failed to initialize API key manager');
+    if (!this.apiKeyManager) {
+      throw new Error('Failed to initialize API key manager');
+    }
     return this.apiKeyManager;
   }
 
@@ -733,12 +762,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         ? modelOptions.responseFormat
         : undefined;
     const randomSeed = typeof modelOptions.randomSeed === 'number' ? modelOptions.randomSeed : undefined;
+    const stopSequences = modelOptions.stop;
     const stop =
-      typeof modelOptions.stop === 'string'
-        ? modelOptions.stop
-        : Array.isArray(modelOptions.stop) && modelOptions.stop.every(item => typeof item === 'string')
-          ? modelOptions.stop
-          : undefined;
+      Array.isArray(stopSequences) && stopSequences.every(item => typeof item === 'string') ? stopSequences : undefined;
     const presencePenalty = typeof modelOptions.presencePenalty === 'number' ? modelOptions.presencePenalty : undefined;
     const frequencyPenalty =
       typeof modelOptions.frequencyPenalty === 'number' ? modelOptions.frequencyPenalty : undefined;
@@ -895,8 +921,15 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
 
     const models = await this.fetchModels();
-    const selectedModel = (modelId ? models.find(model => model.id === modelId) : undefined) ??
-      models[0] ?? {
+    let selectedModel;
+    if (modelId) {
+      selectedModel = models.find(model => model.id === modelId);
+    }
+    if (!selectedModel) {
+      selectedModel = models[0];
+    }
+    if (!selectedModel) {
+      selectedModel = {
         id: modelId ?? 'mistral-large-latest',
         name: modelId ?? 'Mistral',
         maxInputTokens: 32768,
@@ -906,6 +939,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         supportsParallelToolCalls: false,
         supportsVision: false,
       };
+    }
 
     // Validate tool messages and strip orphaned results
     const validation = this.validateToolMessages(messages);
@@ -955,11 +989,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       const startTime = Date.now();
       let ttft: number | undefined;
 
-      for await (const event of mistralStream) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        const normalized = normalizeMistralChunk(event.data);
+      const asyncIterable = isAsyncIterable(mistralStream) ? mistralStream : toAsyncIterable(mistralStream);
+      for await (const event of asyncIterable) {
+        if (token.isCancellationRequested) break;
+        const normalized = normalizeMistralChunk((event as any).data);
         if (!normalized) {
           continue;
         }
@@ -1083,18 +1116,15 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   public toMistralMessages(messages: readonly LanguageModelChatRequestMessage[]): MistralMessage[] {
     this.log.debug('[Mistral] toMistralMessages called with ' + messages.length + ' messages');
-    type MessagePart =
-      | { type: 'text'; text: string }
-      | { type: 'image'; mimeType: string; data: Uint8Array }
-      | { type: 'tool-call'; callId: string; name: string; input?: Record<string, unknown> }
-      | { type: 'tool-result'; callId: string; content: string };
-
-    type OutboundMessage = {
+    const outboundMessages: Array<{
       role: 'system' | 'user' | 'assistant';
-      parts: MessagePart[];
-    };
-
-    const outboundMessages: OutboundMessage[] = [];
+      parts: Array<
+        | { type: 'text'; text: string }
+        | { type: 'image'; mimeType: string; data: Uint8Array }
+        | { type: 'tool-call'; callId: string; name: string; input?: Record<string, unknown> }
+        | { type: 'tool-result'; callId: string; content: string }
+      >;
+    }> = [];
 
     for (const msg of messages) {
       const role = toMistralRole(msg.role);

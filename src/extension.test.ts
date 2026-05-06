@@ -21,10 +21,10 @@ const mockProviderInstance = {
 
 vi.mock('./provider', () => ({
   MistralChatModelProvider: vi.fn().mockImplementation(function (
-    _context: any,
-    _logOutputChannel: any,
+    _context: vscode.ExtensionContext,
+    _logOutputChannel: vscode.LogOutputChannel,
     _autoInit?: boolean,
-    _statusBarItem?: any,
+    _statusBarItem?: vscode.StatusBarItem,
   ) {
     return mockProviderInstance;
   }),
