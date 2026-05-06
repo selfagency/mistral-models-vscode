@@ -1,0 +1,21 @@
+AGENTSY_ADOPTION_PLAN.md
+  s_0af227a135cc6a::t_bcc1cc92ad5867 1-274
+REMEDIATION_STATUS.md
+  s_0af227a135cc6a::t_bd491c8cdfa9da 1-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "c30aa134951ca62cbec53896e159af18332c6a78",
+  "prompts": {},
+  "sessions": {
+    "s_0af227a135cc6a": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "aa2e0901-c5cc-499c-ad80-9d32a068cc53",
+        "model": "unknown"
+      },
+      "human_author": "Daniel Sieradski <2541728+selfagency@users.noreply.github.com>"
+    }
+  }
+}
