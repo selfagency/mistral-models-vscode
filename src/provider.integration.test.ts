@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
+import { ChatResponseStream, CancellationToken, LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
 import { MistralChatModelProvider, formatModelName } from './provider.js';
 
 const mockWriteChunk = vi.fn(async () => {});
@@ -216,9 +216,12 @@ describe('Participant Streaming', () => {
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
-      stream as any,
-      { isCancellationRequested: false, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')], name: undefined }],
+      stream as unknown as ChatResponseStream,
+      {
+        isCancellationRequested: false,
+        onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+      } as CancellationToken,
     );
 
     expect(stream.markdown).toHaveBeenCalledWith('Please add your Mistral API key to use Mistral AI.');

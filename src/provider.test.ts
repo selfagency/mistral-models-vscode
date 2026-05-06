@@ -65,9 +65,9 @@ vi.mock('@agentsy/vscode', () => {
 
   const apiKeyManagerStub = createMockApiKeyManager();
   const rendererHandleStub = createMockRendererHandle();
-  const _chunkNormalizerStub = createChunkNormalizerStub((event: unknown) => {
-    if (typeof event === 'object' && event !== null && 'chunk' in event) {
-      return (event as { chunk: unknown }).chunk;
+  const _chunkNormalizerStub = createChunkNormalizerStub((event: { chunk?: unknown }) => {
+    if (event.chunk !== undefined) {
+      return event.chunk;
     }
     return null;
   });
