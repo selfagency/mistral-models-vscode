@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { MistralChatModelProvider } from './provider.js';
 
+let activeProvider: MistralChatModelProvider | undefined;
+
 /**
  * Get ChatResponseTurn2 constructor if available (VS Code 1.96+)
  * Uses type-safe property access instead of fragile `as any` cast
@@ -13,13 +15,29 @@ function getChatResponseTurn2Constructor(): typeof vscode.ChatResponseTurn | und
   return undefined;
 }
 
-export function activate(context: vscode.ExtensionContext) {
-  const logOutputChannel =
-    typeof vscode.window.createOutputChannel === 'function'
-      ? vscode.window.createOutputChannel('Mistral Models', { log: true })
+function getUserFriendlyError(error: unknown): string {
+  const statusCode =
+    typeof error === 'object' && error !== null && 'statusCode' in error
+      ? (error as { statusCode?: number }).statusCode
       : undefined;
 
+  if (statusCode === 401) return 'Invalid API key. Please update your Mistral API key.';
+  if (statusCode === 403) return 'Access denied. Please check API key permissions.';
+  if (statusCode === 429) return 'Rate limit exceeded. Please wait a moment and try again.';
+  if (statusCode !== undefined && statusCode >= 500) {
+    return 'Mistral service is temporarily unavailable. Please try again later.';
+  }
+
+  return 'An unexpected error occurred. Please check logs and try again.';
+}
+
+export function activate(context: vscode.ExtensionContext) {
+  const logOutputChannel = vscode.window.createOutputChannel('Mistral Models', {
+    log: true,
+  }) as vscode.LogOutputChannel;
+
   const provider = new MistralChatModelProvider(context, logOutputChannel, true);
+  activeProvider = provider;
   context.subscriptions.push(
     vscode.lm.registerLanguageModelChatProvider('mistral', provider),
     vscode.commands.registerCommand('mistral-chat.manageApiKey', async () => {
@@ -55,8 +73,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
       } else if (ChatResponseTurn2 && (turn as any) instanceof ChatResponseTurn2) {
         // Handle ChatResponseTurn2 (VS Code 1.96+)
-        const response = (turn as any).response as any[];
-        const text = response
+        const response =
+          typeof turn === 'object' && turn !== null && 'response' in turn
+            ? ((turn as { response?: unknown }).response ?? [])
+            : [];
+        const responseParts = Array.isArray(response) ? response : [];
+        const text = responseParts
           .filter((r): r is vscode.ChatResponseMarkdownPart => r instanceof vscode.ChatResponseMarkdownPart)
           .map(r => r.value.value)
           .join('');
@@ -71,8 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
     try {
       await provider.streamParticipantResponse(request.model?.id, messages, stream, token);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      stream.markdown(`Error: ${message}`);
+      stream.markdown(`Error: ${getUserFriendlyError(error)}`);
     }
   };
 
@@ -81,4 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(participant);
 }
 
-export function deactivate() {}
+export function deactivate() {
+  activeProvider?.dispose();
+  activeProvider = undefined;
+}

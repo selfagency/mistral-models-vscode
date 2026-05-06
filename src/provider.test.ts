@@ -9,6 +9,117 @@ import {
 } from 'vscode';
 import { formatModelName, getChatModelInfo, MistralChatModelProvider, toMistralRole } from './provider.js';
 
+vi.mock('@agentsy/vscode', () => {
+  const listeners = new Set<(event: string, newKey: string | undefined) => void>();
+
+  const createMockApiKeyManager = (initialKey?: string) => {
+    let key = initialKey;
+    return {
+      async initialize() {},
+      async getApiKey() {
+        return key;
+      },
+      async setApiKey(nextKey?: string) {
+        key = nextKey;
+        for (const listener of listeners) {
+          listener('changed', key);
+        }
+      },
+      async deleteApiKey() {
+        key = undefined;
+      },
+      onDidChangeApiKey(listener: (event: string, newKey: string | undefined) => void) {
+        listeners.add(listener);
+        return { dispose: () => listeners.delete(listener) };
+      },
+      async hasApiKey() {
+        return Boolean(key);
+      },
+    };
+  };
+
+  const createMockRendererHandle = () => ({
+    writes: [] as string[],
+    chunks: [] as unknown[],
+    ended: false,
+    async write(chunk: string) {
+      this.writes.push(chunk);
+    },
+    async writeChunk(chunk: unknown) {
+      this.chunks.push(chunk);
+    },
+    async end() {
+      this.ended = true;
+    },
+  });
+
+  const createChunkNormalizerStub = <TEvent>(mapper: (event: TEvent) => unknown | null) =>
+    async function* (source: AsyncIterable<TEvent>) {
+      for await (const event of source) {
+        const mapped = mapper(event);
+        if (mapped) {
+          yield mapped;
+        }
+      }
+    };
+
+  const apiKeyManagerStub = createMockApiKeyManager();
+  const rendererHandleStub = createMockRendererHandle();
+  const _chunkNormalizerStub = createChunkNormalizerStub((event: unknown) => {
+    if (typeof event === 'object' && event !== null && 'chunk' in event) {
+      return (event as { chunk: unknown }).chunk;
+    }
+    return null;
+  });
+
+  return {
+    createMockApiKeyManager,
+    createMockRendererHandle,
+    createChunkNormalizerStub,
+    ApiKeyManager: class {
+      private key: string | undefined;
+
+      constructor(
+        private readonly context: {
+          secrets: {
+            get(key: string): Promise<string | undefined>;
+            store(key: string, value: string): Promise<void>;
+          };
+        },
+        _config: unknown,
+      ) {}
+
+      async initialize() {
+        await apiKeyManagerStub.initialize();
+        this.key = await this.context.secrets.get('MISTRAL_API_KEY');
+      }
+
+      async getApiKey() {
+        return this.key;
+      }
+
+      async setApiKey(key?: string) {
+        await apiKeyManagerStub.setApiKey(key);
+        if (key) {
+          await this.context.secrets.store('MISTRAL_API_KEY', key);
+        }
+        this.key = key;
+      }
+
+      onDidChangeApiKey(listener: unknown) {
+        return apiKeyManagerStub.onDidChangeApiKey(listener as never);
+      }
+    },
+    cancellationTokenToAbortSignal: vi.fn().mockImplementation(() => new AbortController().signal),
+    createVSCodeChatRenderer: vi.fn().mockImplementation(() => ({
+      markdown: vi.fn((content: string) => {
+        rendererHandleStub.writes.push(content);
+      }),
+    })),
+    createVSCodeAgentLoop: vi.fn().mockImplementation(() => ({ writeChunk: vi.fn(), end: vi.fn() })),
+  };
+});
+
 // ── Shared mock context ───────────────────────────────────────────────────────
 
 const mockContext = {
@@ -807,6 +918,59 @@ describe('Model Information Edge Cases', () => {
 
     expect(models).toEqual([]);
   });
+
+  it('should return empty model list when cancellation is requested before initialization', async () => {
+    const token = { isCancellationRequested: true, onCancellationRequested: vi.fn() };
+    const models = await provider.provideLanguageModelChatInformation({ silent: true }, token as any);
+    expect(models).toEqual([]);
+  });
+
+  it('should return empty model list when cancellation is requested after initialization', async () => {
+    const mockApiKey = 'test-api-key';
+    vi.spyOn(mockContext.secrets, 'get').mockResolvedValue(mockApiKey);
+    await provider['initClient'](true);
+
+    const token = { isCancellationRequested: true, onCancellationRequested: vi.fn() };
+    const models = await provider.provideLanguageModelChatInformation({ silent: true }, token as any);
+    expect(models).toEqual([]);
+  });
+});
+
+describe('Per-model output token limits', () => {
+  let provider: MistralChatModelProvider;
+
+  beforeEach(() => {
+    provider = new MistralChatModelProvider(mockContext, undefined, false);
+  });
+
+  it('applies model-specific maxOutputTokens for known models', async () => {
+    const mockList = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'mistral-small-latest',
+          name: 'Mistral Small',
+          description: 'Small model',
+          maxContextLength: 32768,
+          capabilities: { completionChat: true, functionCalling: true, vision: false },
+        },
+        {
+          id: 'mistral-large-latest',
+          name: 'Mistral Large',
+          description: 'Large model',
+          maxContextLength: 131072,
+          capabilities: { completionChat: true, functionCalling: true, vision: true },
+        },
+      ],
+    });
+    (provider as any).client = { models: { list: mockList } };
+
+    const models = await provider.fetchModels();
+    const small = models.find(m => m.id === 'mistral-small-latest');
+    const large = models.find(m => m.id === 'mistral-large-latest');
+
+    expect(small?.maxOutputTokens).toBe(4096);
+    expect(large?.maxOutputTokens).toBe(32768);
+  });
 });
 
 // ── Chat Response Provision ───────────────────────────────────────────────
@@ -941,10 +1105,10 @@ describe('Chat Response Edge Cases', () => {
       isCancellationRequested: false,
     };
 
-    // Mock the client to throw an error
+    // Mock the client to throw a non-retryable auth error
     (provider as any).client = {
       chat: {
-        stream: vi.fn().mockRejectedValue(new Error('Network error')),
+        stream: vi.fn().mockRejectedValue(new Error('401 Unauthorized')),
       },
     };
 
@@ -959,7 +1123,7 @@ describe('Chat Response Edge Cases', () => {
     expect(mockProgress.report).toHaveBeenCalled();
     const reported = mockProgress.report.mock.calls[0][0]?.value;
     expect([
-      'Network error. Please check your connection and try again.',
+      'Invalid or expired API key. Please update it via "Mistral: Manage API Key".',
       'An error occurred. Please try again or check your API key.',
     ]).toContain(reported);
   });

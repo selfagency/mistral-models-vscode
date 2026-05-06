@@ -53,17 +53,16 @@ describe('extension', () => {
       expect(commands.registerCommand).toHaveBeenCalledWith('mistral-chat.manageApiKey', expect.any(Function));
     });
 
-    it('pushes exactly 3 disposables into context.subscriptions (provider + command + dispose handler)', () => {
+    it('pushes provider and command disposables into context.subscriptions', () => {
       activate(mockContext);
-      // First push call is provider + command + dispose handler bundled together
-      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(3);
+      // First push call is provider + command
+      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(2);
     });
 
-    it('creates output channel and status bar and tracks them in subscriptions', () => {
+    it('creates output channel and tracks it in subscriptions', () => {
       activate(mockContext);
       expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
-      expect(window.createStatusBarItem).toHaveBeenCalled();
-      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(2);
+      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
     });
 
     it('creates the @mistral chat participant', () => {
@@ -186,7 +185,9 @@ describe('extension', () => {
         isCancellationRequested: false,
       });
 
-      expect(mockStream.markdown).toHaveBeenCalledWith(expect.stringContaining('model unavailable'));
+      expect(mockStream.markdown).toHaveBeenCalledWith(
+        expect.stringContaining('An unexpected error occurred. Please check logs and try again.'),
+      );
     });
 
     it('sanitizes error messages and hides sensitive details', async () => {
@@ -208,8 +209,10 @@ describe('extension', () => {
   });
 
   describe('deactivate', () => {
-    it('returns undefined', () => {
+    it('disposes active provider and returns undefined', () => {
+      activate(mockContext);
       expect(deactivate()).toBeUndefined();
+      expect(mockProviderInstance.dispose).toHaveBeenCalled();
     });
   });
 });

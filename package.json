@@ -128,9 +128,16 @@
     "onChatParticipant:mistral-models-vscode.mistral"
   ],
   "dependencies": {
+    "@agentsy/adapters": "^0.1.2",
+    "@agentsy/formatting": "^0.1.1",
     "@agentsy/normalizers": "^0.1.2",
     "@agentsy/processor": "^0.1.2",
+    "@agentsy/recovery": "^0.1.2",
+    "@agentsy/structured": "^0.1.2",
+    "@agentsy/thinking": "^0.1.1",
+    "@agentsy/tool-calls": "^0.1.2",
     "@agentsy/vscode": "^0.1.1",
+    "@agentsy/xml-filter": "^0.1.1",
     "@mistralai/mistralai": "2.2.1",
     "@opentelemetry/api": "^1.9.1",
     "tiktoken": "^1.0.22"

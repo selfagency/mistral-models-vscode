@@ -8,13 +8,34 @@ importers:
 
   .:
     dependencies:
+      '@agentsy/adapters':
+        specifier: ^0.1.2
+        version: 0.1.2
+      '@agentsy/formatting':
+        specifier: ^0.1.1
+        version: 0.1.1
       '@agentsy/normalizers':
         specifier: ^0.1.2
         version: 0.1.2
       '@agentsy/processor':
         specifier: ^0.1.2
         version: 0.1.2
+      '@agentsy/recovery':
+        specifier: ^0.1.2
+        version: 0.1.2
+      '@agentsy/structured':
+        specifier: ^0.1.2
+        version: 0.1.2
+      '@agentsy/thinking':
+        specifier: ^0.1.1
+        version: 0.1.1
+      '@agentsy/tool-calls':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@agentsy/vscode':
+        specifier: ^0.1.1
+        version: 0.1.1
+      '@agentsy/xml-filter':
         specifier: ^0.1.1
         version: 0.1.1
       '@mistralai/mistralai':
@@ -87,14 +108,35 @@ importers:
 
 packages:
 
+  '@agentsy/adapters@0.1.2':
+    resolution: {integrity: sha512-tbIJP1W3OkrAbKKlR0/1yTyH4M2IWwlO4oGEG5SjpZsrzsw8Aw4IbEl6zYY/0ujMlukOa6uRcB8V+e8Ewu9uHQ==}
+
+  '@agentsy/formatting@0.1.1':
+    resolution: {integrity: sha512-/XUvydNMdoEUq7L5lzWBRtbi2Fm6pinS2fwNWFAjoYaA7UyXb1PaKUVPlaFOQEX9bEtNhJWyWO6lWLmGTlHwvw==}
+
   '@agentsy/normalizers@0.1.2':
     resolution: {integrity: sha512-UZHCYnBRfCKoE/bUAWwxLlOgiJUi+HXlOTGt3ek9R9f1HeonlmhhdRt6pUYhUaiP9cVo3kU9wNaWs+5rmZCx6A==}
 
   '@agentsy/processor@0.1.2':
     resolution: {integrity: sha512-WOS6RhHRL0QSFV3FIH+u9SzVXEzd+byoA6XzHc3DYWDCEXBQMWES3v0V4KSXaEH3HQ4YT3ZQ5ZQorYpJAgLg8Q==}
 
+  '@agentsy/recovery@0.1.2':
+    resolution: {integrity: sha512-aZ7xrRZxA/itAeqMhomZRKDWDZdPN1hxs1eiKTd68PZECDgYaKsTQIeA3QX/5pdegLxDLG/bROZyFlFTHAma6Q==}
+
+  '@agentsy/structured@0.1.2':
+    resolution: {integrity: sha512-4PMhsOZh+cq00lbIofRrGDwi1mglfUgXArPzQIbd+J5qbs3nuEDsNPk5N/npU1qgHbRFvybBMZnvh78nsqmDIA==}
+
+  '@agentsy/thinking@0.1.1':
+    resolution: {integrity: sha512-vAhopJ9819N0w7VSZP2ROL+j9LFv8wkb+K4twyx769WF+ebPVp/V3cb45FwLUvUOov9uTMc4sscfbAQ3FUtQJA==}
+
+  '@agentsy/tool-calls@0.1.2':
+    resolution: {integrity: sha512-0PPYqsjR0lmECFZl7KAc+Wk2+hQTqvfV9wSaLAPdFuOPsrktpvvVfrnkENkADou7wpBqoXmR+Q5VtTNZBPzGfA==}
+
   '@agentsy/vscode@0.1.1':
     resolution: {integrity: sha512-emyP2GDl2hUOD3ELqFdOkYt6MYN3Zr3yBrYCeA2WIY0GbDvzbvCTrOdiEY4GGTBvlZnx26vym9cJbyZgiGaTaQ==}
+
+  '@agentsy/xml-filter@0.1.1':
+    resolution: {integrity: sha512-6go9dKYBi/EQYPOfIKp1SOWQlvim1SONFK5Q2UUpgF5XW3murulCjl5Voc7sxRMPrXGEnFLhgBPhn68ZXzO3cA==}
 
   '@babel/helper-string-parser@7.27.1':
     resolution: {integrity: sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA==}
@@ -2397,11 +2439,25 @@ packages:
 
 snapshots:
 
+  '@agentsy/adapters@0.1.2': {}
+
+  '@agentsy/formatting@0.1.1': {}
+
   '@agentsy/normalizers@0.1.2': {}
 
   '@agentsy/processor@0.1.2': {}
 
+  '@agentsy/recovery@0.1.2': {}
+
+  '@agentsy/structured@0.1.2': {}
+
+  '@agentsy/thinking@0.1.1': {}
+
+  '@agentsy/tool-calls@0.1.2': {}
+
   '@agentsy/vscode@0.1.1': {}
+
+  '@agentsy/xml-filter@0.1.1': {}
 
   '@babel/helper-string-parser@7.27.1': {}
 
@@ -3329,6 +3385,10 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.3):
     optionalDependencies:
       picomatch: 4.0.3
+
+  fdir@6.5.0(picomatch@4.0.4):
+    optionalDependencies:
+      picomatch: 4.0.4
 
   fill-range@7.1.1:
     dependencies:
@@ -4496,8 +4556,8 @@ snapshots:
   vite@7.3.1(@types/node@25.6.0)(yaml@2.8.4):
     dependencies:
       esbuild: 0.27.3
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
+      fdir: 6.5.0(picomatch@4.0.4)
+      picomatch: 4.0.4
       postcss: 8.5.6
       rollup: 4.59.0
       tinyglobby: 0.2.15
