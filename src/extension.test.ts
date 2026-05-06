@@ -215,4 +215,41 @@ describe('extension', () => {
       expect(mockProviderInstance.dispose).toHaveBeenCalled();
     });
   });
+
+  describe('additional coverage', () => {
+    it('sets participant iconPath from Uri.joinPath', () => {
+      const sentinel = { path: 'sentinel' } as any;
+      (vscode.Uri.joinPath as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(sentinel);
+
+      activate(mockContext);
+
+      const participantInstance = (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.results[0].value;
+      expect(participantInstance.iconPath).toBe(sentinel);
+    });
+
+    it.each([
+      [{ statusCode: 403 }, /Access denied/i],
+      [{ statusCode: 429 }, /Rate limit exceeded/i],
+      [{ statusCode: 503 }, /temporarily unavailable/i],
+    ])('maps error %o to friendly message', async (error, expected) => {
+      const [, handler] = (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+      if (!handler) {
+        activate(mockContext);
+      }
+      const getHandler = () =>
+        (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown as (
+          ...args: any[]
+        ) => Promise<void>;
+
+      const stream = { markdown: vi.fn(), progress: vi.fn() };
+      mockProviderInstance.streamParticipantResponse.mockRejectedValueOnce(error);
+
+      await getHandler()({ prompt: 'x', model: { id: 'mistral' } }, { history: [] }, stream as any, {
+        isCancellationRequested: false,
+      });
+
+      const msg = (stream.markdown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string | undefined;
+      expect(msg).toMatch(expected);
+    });
+  });
 });
