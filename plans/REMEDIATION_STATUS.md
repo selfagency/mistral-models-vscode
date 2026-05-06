@@ -12,15 +12,15 @@
 
 - Adopted `@agentsy/adapters` for outbound message conversion (`toMistralMessages`) and stream processing (`processRawStream`).
 - Replaced dynamic runtime helper discovery with static `@agentsy/vscode` helper usage:
-   - `ToolCallDeltaAccumulator`
-   - `accumulateToolCallDeltas`
-   - `toVSCodeToolCallPart`
-   - `mapUsageToVSCode`
+  - `ToolCallDeltaAccumulator`
+  - `accumulateToolCallDeltas`
+  - `toVSCodeToolCallPart`
+  - `mapUsageToVSCode`
 - Added `@agentsy/tool-calls` XML fallback extraction (`extractXmlToolCalls`) in streaming text path.
 - Added `@agentsy/xml-filter` stream scrubbing (`createXmlStreamFilter`) to sanitize rendered markdown output.
 - Validation status:
-   - `pnpm test` ✅
-   - `pnpm run compile` ✅
+  - `pnpm test` ✅
+  - `pnpm run compile` ✅
 
 ### ✅ Base Provider Evaluation Complete
 

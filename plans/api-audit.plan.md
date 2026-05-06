@@ -38,6 +38,7 @@ and what is missing.
 **Affected methods:** `provideLanguageModelChatResponse`, `toMistralMessages`, `provideTokenCount`
 
 The `LanguageModelChatProvider` interface requires:
+
 ```typescript
 provideLanguageModelChatResponse(
   model: T,
@@ -110,6 +111,7 @@ overload without `{ log: true }` option). This forces the `as any` cast. The gua
 target 1.109.
 
 **Fix:** Remove the `typeof` guard. Use a type-safe cast:
+
 ```typescript
 const logOutputChannel = vscode.window.createOutputChannel(
   'Mistral Models',
@@ -138,6 +140,7 @@ participant.iconPath = (vscode.Uri as any).joinPath(context.extensionUri, 'logo.
 `@types/vscode@1.109.0`. No cast is needed.
 
 **Fix:** Remove the cast:
+
 ```typescript
 participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
 ```
@@ -166,6 +169,7 @@ Extensions using `sendRequest` can pass these via `modelOptions` today, but they
 discarded instead of being forwarded to Mistral.
 
 **Fix:** Add forwarding for each parameter with appropriate type guards:
+
 ```typescript
 const responseFormat =
   modelOptions.responseFormat && typeof modelOptions.responseFormat === 'object'
@@ -220,6 +224,7 @@ impossible. The Mistral model list API returns model IDs that include version in
 `mistral-large-2411`). We should use the model ID as the version string, which is stable and unique.
 
 **Fix:**
+
 ```typescript
 version: model.id,
 ```
@@ -268,6 +273,7 @@ APIs. Our fallthrough `default: return 'user'` silently maps any unrecognized ro
 wrong for system messages.
 
 **Fix:** Add explicit handling and a warning log:
+
 ```typescript
 export function toMistralRole(role: LanguageModelChatMessageRole): 'user' | 'assistant' | 'system' {
   switch (role) {
@@ -306,6 +312,7 @@ per-model tool limits in `capabilities`.
 
 The `@mistralai/mistralai` v2.0 SDK is ESM-only, which conflicts with our CJS build via tsup.
 A future upgrade would require either:
+
 - Switching to ESM output (`format: ['esm']` in tsup.config.mjs and adding `"type": "module"` to
   package.json), or
 - Using dynamic `import()` at runtime to load the ESM package from a CJS context.

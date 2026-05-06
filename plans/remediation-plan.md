@@ -97,7 +97,7 @@ From the VS Code AI API docs, a compliant `LanguageModelChatProvider` must:
 
 ## 3. Codebase Overview
 
-```
+```text
 mistral-models-vscode/
 ├── src/
 │   ├── extension.ts          (65 lines)  — Entry point, registration
@@ -254,7 +254,7 @@ mistral-models-vscode/
 - **Impact:** Larger than necessary extension package. Potentially includes sensitive CI configuration.
 - **Fix:** Add the missing exclusions:
 
-  ```
+  ```text
   scripts/**
   test/**
   codeql/**
@@ -740,7 +740,7 @@ entry: ['src/extension.ts'],
 
 #### 6.3.6 Fix `.vscodeignore` (M13)
 
-```
+```text
 .vscode/**
 .vscode-test**/
 src/**

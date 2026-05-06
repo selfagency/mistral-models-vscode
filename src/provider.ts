@@ -1,15 +1,6 @@
 import { processRawStream, toMistralMessages as adaptersToMistralMessages } from '@agentsy/adapters';
 import { normalizeMistralChunk } from '@agentsy/normalizers';
-import { extractXmlToolCalls } from '@agentsy/tool-calls';
-import {
-  ToolCallDeltaAccumulator,
-  accumulateToolCallDeltas,
-  cancellationTokenToAbortSignal,
-  createVSCodeAgentLoop,
-  createVSCodeChatRenderer,
-  mapUsageToVSCode,
-  toVSCodeToolCallPart,
-} from '@agentsy/vscode';
+import { extractXmlToolCalls, type OutputPart } from '@agentsy/tool-calls';
 import { createXmlStreamFilter, type XmlStreamFilter } from '@agentsy/xml-filter';
 import { Mistral } from '@mistralai/mistralai';
 import { trace } from '@opentelemetry/api';

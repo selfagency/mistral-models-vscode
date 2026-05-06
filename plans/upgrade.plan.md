@@ -15,23 +15,23 @@ The extension currently uses `@mistralai/mistralai@2.2.1` and builds successfull
 For future SDK-major upgrades, follow this checklist:
 
 1. **Packaging mode check (CJS vs ESM):**
-  - If bundling remains compatible, keep static imports.
-  - If a future SDK requires strict ESM runtime semantics, choose one path:
-    - migrate extension output to ESM, or
-    - keep CJS extension output and isolate SDK usage behind runtime `import()` boundaries.
+   - If bundling remains compatible, keep static imports.
+   - If a future SDK requires strict ESM runtime semantics, choose one path:
+     - migrate extension output to ESM, or
+     - keep CJS extension output and isolate SDK usage behind runtime `import()` boundaries.
 
 2. **Avoid blind SDK externalization:**
-  - Externalizing an ESM-only SDK from a CJS extension host can break activation at runtime.
-  - Re-validate `tsup` externals whenever SDK packaging changes.
+   - Externalizing an ESM-only SDK from a CJS extension host can break activation at runtime.
+   - Re-validate `tsup` externals whenever SDK packaging changes.
 
 3. **Upgrade validation gate:**
-  - `pnpm run check-types`
-  - `pnpm test`
-  - `pnpm run compile`
-  - manual activation test in Extension Development Host (`F5`) with streaming + tool call.
+   - `pnpm run check-types`
+   - `pnpm test`
+   - `pnpm run compile`
+   - manual activation test in Extension Development Host (`F5`) with streaming + tool call.
 
 4. **Rollback strategy:**
-  - Keep previous known-good SDK version pinned until all validation gates pass.
+   - Keep previous known-good SDK version pinned until all validation gates pass.
 
 This note supersedes earlier assumptions that SDK v2 adoption necessarily required immediate extension-wide ESM migration.
 
@@ -1942,7 +1942,7 @@ secrets/
 
 ## Reporting Security Vulnerabilities
 
-If you discover a security vulnerability, please email security@selfagency.com
+If you discover a security vulnerability, please email <security@selfagency.com>
 instead of using the issue tracker.
 
 ## Secure Practices
