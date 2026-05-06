@@ -1,20 +1,3 @@
-// Removed duplicate isAsyncIterable, toAsyncIterable helpers
-// Remove broken import of isAsyncIterable, toAsyncIterable
-
-function isAsyncIterable<T>(obj: unknown): obj is AsyncIterable<T> {
-  return obj !== null && typeof obj === 'object' && Symbol.asyncIterator in obj;
-}
-
-function toAsyncIterable<T>(iterable: Iterable<T>): AsyncIterable<T> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      for (const item of iterable) {
-        yield item;
-      }
-    },
-  };
-}
-// Added isAsyncIterable, toAsyncIterable for async iterable fix
 import { toMistralMessages as adaptersToMistralMessages, processRawStream } from '@agentsy/adapters';
 import { normalizeMistralChunk } from '@agentsy/normalizers';
 import { type OutputPart } from '@agentsy/processor';
@@ -30,7 +13,7 @@ import {
 } from '@agentsy/vscode';
 import { createXmlStreamFilter, type XmlStreamFilter } from '@agentsy/xml-filter';
 import { Mistral } from '@mistralai/mistralai';
-import { trace } from '@opentelemetry/api';
+import { trace, type Span } from '@opentelemetry/api';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
@@ -53,6 +36,21 @@ import {
   ProvideLanguageModelChatResponseOptions,
   window,
 } from 'vscode';
+
+// Added isAsyncIterable, toAsyncIterable for async iterable fix
+function isAsyncIterable<T>(obj: unknown): obj is AsyncIterable<T> {
+  return obj !== null && typeof obj === 'object' && Symbol.asyncIterator in obj;
+}
+
+function toAsyncIterable<T>(iterable: Iterable<T>): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const item of iterable) {
+        yield item;
+      }
+    },
+  };
+}
 
 interface AgentsyChatResponseStreamCompat {
   markdown(content: string): void;
@@ -158,11 +156,28 @@ export type MistralToolCall = {
   };
 };
 
-export type MistralMessage =
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: MistralContent }
-  | { role: 'assistant'; content: MistralContent | null; toolCalls?: MistralToolCall[]; prefix?: boolean }
-  | { role: 'tool'; content: string | null; toolCallId: string; name?: string };
+export interface MistralSystemMessage {
+  role: 'system';
+  content: string;
+}
+export interface MistralUserMessage {
+  role: 'user';
+  content: MistralContent;
+}
+export interface MistralAssistantMessage {
+  role: 'assistant';
+  content: MistralContent | null;
+  toolCalls?: MistralToolCall[];
+  prefix?: boolean;
+}
+export interface MistralToolMessage {
+  role: 'tool';
+  content: string | null;
+  toolCallId: string;
+  name?: string;
+}
+
+export type MistralMessage = MistralSystemMessage | MistralUserMessage | MistralAssistantMessage | MistralToolMessage;
 
 /**
  * Mistral Chat Model Provider
@@ -189,30 +204,18 @@ function classifyResponse(error: unknown, token?: CancellationToken): ChatFetchR
   const rawMessage = error instanceof Error ? error.message : String(error);
   const message = rawMessage.toLowerCase();
 
-  if (
-    message.includes('401') ||
-    message.includes('unauthorized') ||
-    message.includes('403') ||
-    message.includes('forbidden')
-  ) {
-    return ChatFetchResponseType.Failed;
-  }
-  if (message.includes('402') || message.includes('413')) {
-    return ChatFetchResponseType.QuotaExceeded;
-  }
-  if (message.includes('429') || message.includes('rate limit')) {
-    return ChatFetchResponseType.RateLimited;
-  }
-  if (
-    message.includes('500') ||
-    message.includes('internal server') ||
-    message.includes('502') ||
-    message.includes('503')
-  ) {
-    return ChatFetchResponseType.Failed;
-  }
-  if (message.includes('network') || message.includes('econnrefused') || message.includes('etimedout')) {
-    return ChatFetchResponseType.Failed;
+  const mapping: Array<{ substrings: string[]; type: ChatFetchResponseType }> = [
+    { substrings: ['402', '413'], type: ChatFetchResponseType.QuotaExceeded },
+    { substrings: ['429', 'rate limit'], type: ChatFetchResponseType.RateLimited },
+    { substrings: ['401', 'unauthorized', '403', 'forbidden'], type: ChatFetchResponseType.Failed },
+    { substrings: ['500', 'internal server', '502', '503'], type: ChatFetchResponseType.Failed },
+    { substrings: ['network', 'econnrefused', 'etimedout'], type: ChatFetchResponseType.Failed },
+  ];
+
+  for (const map of mapping) {
+    for (const sub of map.substrings) {
+      if (message.includes(sub)) return map.type;
+    }
   }
 
   return ChatFetchResponseType.Failed;
@@ -259,7 +262,7 @@ async function withRetry<T>(
       }
 
       // Calculate delay with exponential backoff
-      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000); // 1s, 2s, 4s, capped at 30s
+      const delay = Math.min(1000 * 2 ** (attempt - 1), 30000); // 1s, 2s, 4s, capped at 30s
 
       log.info(`[Mistral] ${context} attempt ${attempt} failed, retrying in ${delay}ms: ${String(error)}`);
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -375,7 +378,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   public getOrCreateVsCodeToolCallId(mistralId: string): string {
     // Check if we already have a mapping for this Mistral ID
     if (this.reverseToolCallIdMapping.has(mistralId)) {
-      return this.reverseToolCallIdMapping.get(mistralId)!;
+      const existing = this.reverseToolCallIdMapping.get(mistralId);
+      if (existing) return existing;
     }
     // Create a new mapping
     const vsCodeId = this.generateToolCallId();
@@ -426,7 +430,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         try {
           await manager.setupHasKeyContext?.();
         } catch (error) {
-          this.log.debug('[Mistral] setupHasKeyContext failed: ' + String(error));
+          this.log.debug(`[Mistral] setupHasKeyContext failed: ${String(error)}`);
         }
 
         manager.onDidChangeApiKey((_event, newKey) => {
@@ -470,25 +474,34 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     try {
       const response = await this.client.models.list();
       // Deduplicate by model id to avoid repeated entries and map to our MistralModel shape.
-      const byId = new Map<string, any>();
+      const byId = new Map<string, Record<string, unknown>>();
       for (const m of response.data ?? []) {
         if (!m || typeof m !== 'object') continue;
-        if (!('id' in m) || !m.id) continue;
-        if (!('capabilities' in m) || !m.capabilities?.completionChat) continue;
-        if (!byId.has(m.id)) byId.set(m.id, m as any);
+        const obj = m as Record<string, unknown>;
+        if (!('id' in obj) || !obj.id) continue;
+        if (typeof obj.id !== 'string') continue;
+        if (!('capabilities' in obj) || !(obj.capabilities as Record<string, unknown>)?.completionChat) continue;
+        const id = String(obj.id);
+        if (!byId.has(id)) byId.set(id, obj);
       }
-      const rawModels = Array.from(byId.values()).map(m => ({
-        id: m.id,
-        originalName: m.name ?? formatModelName(m.id),
-        detail: m.description ?? undefined,
-        maxInputTokens: m.maxContextLength ?? 32768,
-        maxOutputTokens: getModelOutputLimit(m.id),
-        defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
-        toolCalling: m.capabilities?.functionCalling ?? false,
-        supportsParallelToolCalls: m.capabilities?.functionCalling ?? false,
-        supportsVision: m.capabilities?.vision ?? false,
-        temperature: m.defaultModelTemperature ?? undefined,
-      }));
+
+      const rawModels = Array.from(byId.values()).map(obj => {
+        const m = obj as Record<string, unknown>;
+        const id = m.id as string;
+        return {
+          id,
+          originalName: (typeof m.name === 'string' && m.name) || formatModelName(id),
+          detail: typeof m.description === 'string' ? (m.description as string) : undefined,
+          maxInputTokens: typeof m.maxContextLength === 'number' ? (m.maxContextLength as number) : 32768,
+          maxOutputTokens: getModelOutputLimit(id),
+          defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
+          toolCalling: !!(m.capabilities as Record<string, unknown>)?.functionCalling,
+          supportsParallelToolCalls: !!(m.capabilities as Record<string, unknown>)?.functionCalling,
+          supportsVision: !!(m.capabilities as Record<string, unknown>)?.vision,
+          temperature:
+            typeof m.defaultModelTemperature === 'number' ? (m.defaultModelTemperature as number) : undefined,
+        };
+      });
 
       // Prefer the 'latest' variant within each model family when available.
       // Determine a base id by stripping a trailing '-latest' or numeric suffix (e.g. '-2512').
@@ -547,7 +560,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return this.fetchedModels;
     } catch (error) {
-      this.log.error('Failed to fetch Mistral models: ' + String(error));
+      this.log.error(`[Mistral] Failed to fetch Mistral models: ${String(error)}`);
       return [];
     }
   }
@@ -568,7 +581,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   public async setApiKey(): Promise<string | undefined> {
     const manager = await this.getApiKeyManager();
     const before = await manager.getApiKey();
-    this.log.debug('[Mistral] Prompting user for API key (existing present: ' + !!before + ')');
+    this.log.debug(`[Mistral] Prompting user for API key (existing present: ${!!before})`);
 
     const input = await window.showInputBox({
       placeHolder: 'Mistral API Key',
@@ -594,9 +607,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       await manager.setApiKey(apiKey);
       after = await manager.getApiKey();
     } catch (error) {
-      this.log.warn('[Mistral] Failed to store API key in secret storage: ' + String(error));
+      this.log.warn(`[Mistral] Failed to store API key in secret storage: ${String(error)}`);
       this.client = new Mistral({ apiKey });
-      this.fetchedModels = null;
+      this.fetchedModels ??= null;
       this.modelsCacheExpiry = 0;
       this._onDidChangeLanguageModelChatInformation.fire(undefined);
       return apiKey;
@@ -627,7 +640,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
     const manager = await this.getApiKeyManager();
     let apiKey: string | undefined = await manager.getApiKey();
-    this.log.debug('[Mistral] initClient called (silent=' + silent + ', hasStoredKey=' + !!apiKey + ')');
+    this.log.debug(`[Mistral] initClient called (silent=${silent}, hasStoredKey=${!!apiKey})`);
     if (!silent && !apiKey) {
       apiKey = await this.setApiKey();
     } else if (apiKey) {
@@ -636,7 +649,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       });
     }
 
-    this.log.debug('[Mistral] initClient result: ' + !!apiKey);
+    this.log.debug(`[Mistral] initClient result: ${!!apiKey}`);
     return !!apiKey;
   }
 
@@ -647,7 +660,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     options: { silent: boolean },
     token: CancellationToken,
   ): Promise<LanguageModelChatInformation[]> {
-    this.log.info('[Mistral] provideLanguageModelChatInformation called (silent=' + options.silent + ')');
+    this.log.info(`[Mistral] provideLanguageModelChatInformation called (silent=${options.silent})`);
     if (token.isCancellationRequested) {
       this.log.info('[Mistral] provideLanguageModelChatInformation cancelled before initialization');
       return [];
@@ -677,7 +690,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       this.log.info('[Mistral] provideLanguageModelChatInformation cancelled after fetch');
       return [];
     }
-    this.log.info('[Mistral] Returning ' + models.length + ' models');
+    this.log.info(`[Mistral] Returning ${models.length} models`);
     return models.map(model => getChatModelInfo(model));
   }
 
@@ -796,13 +809,14 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       const renderer = createVSCodeChatRenderer({ stream: rendererStream });
       const xmlFilter = createXmlStreamFilter({
         onWarning: (message: string, context?: Record<string, unknown>) =>
-          this.log.debug('[Mistral] xml filter warning: ' + message + (context ? ` ${JSON.stringify(context)}` : '')),
+          this.log.debug(`[Mistral] xml filter warning: ${message}${context ? ` ${JSON.stringify(context)}` : ''}`),
       });
 
       // Create chat completion request with streaming (wrapped in retry logic)
+      const client = this.client as Mistral;
       const stream = await withRetry(
         async () =>
-          this.client!.chat.stream(
+          client.chat.stream(
             {
               model: model.id,
               messages: mistralMessages,
@@ -837,7 +851,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         modelId: model.id,
         accumulateNativeToolCalls: true,
         onWarning: (msg, ctx) =>
-          this.log.warn('[Mistral] stream parser: ' + msg + (ctx ? ' ' + JSON.stringify(ctx) : '')),
+          this.log.warn(`[Mistral] stream parser: ${msg}${ctx ? ` ${JSON.stringify(ctx)}` : ''}`),
       })) {
         if (token.isCancellationRequested) {
           break;
@@ -876,7 +890,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       const completedToolCalls = toolCallAccumulator.finalize({
         repairIncomplete: true,
         onWarning: (msg: string, ctx?: Record<string, unknown>) =>
-          this.log.warn('[Mistral] tool call finalize warning: ' + msg + (ctx ? ' ' + JSON.stringify(ctx) : '')),
+          this.log.warn(`[Mistral] tool call finalize warning: ${msg}${ctx ? ` ${JSON.stringify(ctx)}` : ''}`),
       });
       for (const toolCall of completedToolCalls) {
         this.log.info(`[Mistral] Emitting finalized tool call id=${toolCall.callId} name=${toolCall.name}`);
@@ -902,7 +916,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * Stream a participant response directly from Mistral using @agentsy/vscode renderer.
    */
   private selectModel(modelId: string | undefined, models: MistralModel[]): MistralModel {
-    let selected = undefined;
+    let selected: MistralModel | undefined;
     if (modelId) {
       selected = models.find(model => model.id === modelId);
     }
@@ -974,9 +988,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
       if (!this.client) throw new Error('Mistral client not initialized');
 
+      const client = this.client as Mistral;
       const mistralStream = await withRetry(
         () =>
-          this.client!.chat.stream(
+          client.chat.stream(
             {
               model: selectedModel.id,
               messages: mistralMessages,
@@ -996,25 +1011,12 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       let ttft: number | undefined;
 
       const asyncIterable = isAsyncIterable(mistralStream) ? mistralStream : toAsyncIterable(mistralStream);
-      for await (const event of asyncIterable) {
-        if (token.isCancellationRequested) break;
-        const normalized = normalizeMistralChunk((event as any).data);
-        if (!normalized) {
-          continue;
-        }
-
-        // Record TTFT on first content chunk
-        if (!ttft && normalized.chunk.content) {
-          ttft = Date.now() - startTime;
-          this.log.info(`[Mistral] participant TTFT: ${ttft}ms`);
-          // Add TTFT to span attributes
-          span.setAttributes({ 'ttft.ms': ttft });
-        }
-
-        await renderer.writeChunk(normalized.chunk);
+      const ttftResult = await this._consumeParticipantStream(asyncIterable, renderer, token, span, startTime);
+      if (!ttft && typeof ttftResult === 'number') {
+        ttft = ttftResult;
+        this.log.info(`[Mistral] participant TTFT: ${ttft}ms`);
+        span.setAttributes({ 'ttft.ms': ttft });
       }
-
-      await renderer.end();
     } catch (error) {
       if (error instanceof Error && (error.name === 'AbortError' || token.isCancellationRequested)) {
         this.log.info('[Mistral] Participant request cancelled');
@@ -1028,6 +1030,31 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     } finally {
       span.end();
     }
+  }
+
+  private async _consumeParticipantStream(
+    asyncIterable: AsyncIterable<unknown>,
+    renderer: { writeChunk(chunk: unknown): Promise<void>; end(): Promise<void> },
+    token: CancellationToken,
+    span: Span,
+    startTime: number,
+  ): Promise<number | undefined> {
+    let ttft: number | undefined;
+    for await (const event of asyncIterable) {
+      if (token.isCancellationRequested) break;
+      const evt = event as Record<string, unknown>;
+      const normalized = normalizeMistralChunk(evt.data);
+      if (!normalized) continue;
+
+      if (!ttft && normalized.chunk.content) {
+        ttft = Date.now() - startTime;
+      }
+
+      await renderer.writeChunk(normalized.chunk);
+    }
+
+    await renderer.end();
+    return ttft;
   }
 
   /**
@@ -1067,7 +1094,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       if (part.type === 'text') {
         emitTextPart(part.text);
       } else if (part.type === 'thinking') {
-        this.log.debug('[Mistral] thinking: ' + part.text.slice(0, 200));
+        this.log.debug(`[Mistral] thinking: ${part.text.slice(0, 200)}`);
       } else if (part.type === 'tool_call') {
         const vsPart = toVSCodeToolCallPart(part, { fallbackCallId: () => this.generateToolCallId() });
         const mappedCallId = this.getOrCreateVsCodeToolCallId(vsPart.callId);
@@ -1124,7 +1151,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    * - Tool results MUST be sent as role="tool" messages with tool_call_id.
    */
   public toMistralMessages(messages: readonly LanguageModelChatRequestMessage[]): MistralMessage[] {
-    this.log.debug('[Mistral] toMistralMessages called with ' + messages.length + ' messages');
+    this.log.debug(`[Mistral] toMistralMessages called with ${messages.length} messages`);
 
     type MessagePart =
       | { type: 'text'; text: string }
@@ -1134,15 +1161,23 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
     const outboundMessages: Array<{ role: 'system' | 'user' | 'assistant'; parts: MessagePart[] }> = [];
 
+    const ensureMistralId = (callId: string) => {
+      const existing = this.getMistralToolCallId(callId);
+      if (existing) return existing;
+      const generated = this.generateToolCallId();
+      this.toolCallIdMapping.set(callId, generated);
+      this.reverseToolCallIdMapping.set(generated, callId);
+      return generated;
+    };
+
     for (const msg of messages) {
       const role = toMistralRole(msg.role);
       const outboundRole: 'system' | 'user' | 'assistant' = role;
       const parts: Array<MessagePart> = [];
-
-      for (const part of msg.content) {
+      const handlePart = (part: unknown) => {
         if (part instanceof LanguageModelTextPart) {
           parts.push({ type: 'text', text: part.value });
-          continue;
+          return;
         }
 
         if (part instanceof LanguageModelDataPart) {
@@ -1151,32 +1186,22 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           } else {
             parts.push({ type: 'text', text: `[data:${part.mimeType}]` });
           }
-          continue;
+          return;
         }
 
         if (part instanceof LanguageModelToolCallPart) {
-          let mistralId = this.getMistralToolCallId(part.callId);
-          if (!mistralId) {
-            mistralId = this.generateToolCallId();
-            this.toolCallIdMapping.set(part.callId, mistralId);
-            this.reverseToolCallIdMapping.set(mistralId, part.callId);
-          }
+          const mistralId = ensureMistralId(part.callId);
           parts.push({
             type: 'tool-call',
             callId: mistralId,
             name: part.name,
             input: (part.input ?? {}) as Record<string, unknown>,
           });
-          continue;
+          return;
         }
 
         if (part instanceof LanguageModelToolResultPart) {
-          let mistralId = this.getMistralToolCallId(part.callId);
-          if (!mistralId) {
-            mistralId = this.generateToolCallId();
-            this.toolCallIdMapping.set(part.callId, mistralId);
-            this.reverseToolCallIdMapping.set(mistralId, part.callId);
-          }
+          const mistralId = ensureMistralId(part.callId);
           const resultText = part.content
             .filter(p => p instanceof LanguageModelTextPart)
             .map(p => p.value)
@@ -1187,6 +1212,10 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
             content: resultText.length > 0 ? resultText : JSON.stringify(part.content),
           });
         }
+      };
+
+      for (const part of msg.content) {
+        handlePart(part);
       }
 
       if (parts.length === 0) {
@@ -1209,7 +1238,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
           return originalId;
         }
         if (this.toolCallIdMapping.has(originalId)) {
-          return this.toolCallIdMapping.get(originalId)!;
+          const mapped = this.toolCallIdMapping.get(originalId);
+          if (mapped) return mapped;
         }
         const generated = this.generateToolCallId();
         this.toolCallIdMapping.set(originalId, generated);
@@ -1218,7 +1248,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       },
       onWarning: (message, context) => {
         this.log.warn(
-          '[Mistral] adapters toMistralMessages warning: ' + message + (context ? ' ' + JSON.stringify(context) : ''),
+          `[Mistral] adapters toMistralMessages warning: ${message}${context ? ` ${JSON.stringify(context)}` : ''}`,
         );
       },
     }) as unknown as MistralMessage[];
@@ -1271,11 +1301,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     try {
       this.tokenizer?.free();
     } catch (error) {
-      this.log.debug('[Mistral] tokenizer free failed: ' + String(error));
+      this.log.debug(`[Mistral] tokenizer free failed: ${String(error)}`);
     }
     this.tokenizer = null;
     this.client = null;
-    this.fetchedModels = null;
+    this.fetchedModels ??= null;
     this.modelsCacheExpiry = 0;
     this._onDidChangeLanguageModelChatInformation.dispose();
   }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatResponseStream, CancellationToken, LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
+import { CancellationToken, ChatResponseStream, LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
 import { MistralChatModelProvider, formatModelName } from './provider.js';
 
 const mockWriteChunk = vi.fn(async () => {});
@@ -229,7 +229,7 @@ describe('Participant Streaming', () => {
 
   it('should stream normalized chunks through agentsy renderer', async () => {
     const stream = createStream();
-    (provider as any).client = {
+    (provider as unknown as { client?: unknown }).client = {
       chat: {
         stream: vi.fn().mockResolvedValue(
           (async function* () {
@@ -248,7 +248,7 @@ describe('Participant Streaming', () => {
         toolCalling: false,
         supportsParallelToolCalls: false,
       },
-    ] as any);
+    ] as unknown as any);
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',

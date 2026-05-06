@@ -40,12 +40,12 @@ vi.mock('@agentsy/vscode', () => {
 
   const createMockRendererHandle = () => ({
     writes: [] as string[],
-    chunks: [] as unknown[],
+    chunks: [] as Array<string | Record<string, unknown>>,
     ended: false,
     async write(chunk: string) {
       this.writes.push(chunk);
     },
-    async writeChunk(chunk: unknown) {
+    async writeChunk(chunk: string | Record<string, unknown>) {
       this.chunks.push(chunk);
     },
     async end() {
@@ -340,7 +340,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('filters out models without completionChat capability', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel, embedModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toHaveLength(1);
@@ -349,7 +349,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('maps API fields to MistralModel correctly', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const [model] = await provider.fetchModels();
     expect(model.name).toBe('Mistral Large');
@@ -364,7 +364,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
   it('falls back to formatModelName when name is null', async () => {
     const noName = { ...chatModel, name: null };
     const mockList = vi.fn().mockResolvedValue({ data: [noName] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const [model] = await provider.fetchModels();
     expect(model.name).toBe('Mistral Large Latest');
@@ -372,7 +372,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('caches the result — second call does not hit the API', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     await provider.fetchModels();
     await provider.fetchModels();
@@ -382,7 +382,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
   it('returns empty array and does not throw on API error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockList = vi.fn().mockRejectedValue(new Error('network error'));
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toEqual([]);
@@ -390,7 +390,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('fires onDidChangeLanguageModelChatInformation after a successful fetch', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const listener = vi.fn();
     provider.onDidChangeLanguageModelChatInformation(listener);
@@ -401,7 +401,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('does not fire onDidChangeLanguageModelChatInformation when serving from cache', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const listener = vi.fn();
     provider.onDidChangeLanguageModelChatInformation(listener);
@@ -414,7 +414,7 @@ describe('MistralChatModelProvider — fetchModels', () => {
   it('does not fire onDidChangeLanguageModelChatInformation on API error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockList = vi.fn().mockRejectedValue(new Error('network error'));
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const listener = vi.fn();
     provider.onDidChangeLanguageModelChatInformation(listener);
@@ -425,11 +425,11 @@ describe('MistralChatModelProvider — fetchModels', () => {
 
   it('cache is cleared when fetchedModels is reset to null', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [chatModel] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
     await provider.fetchModels();
 
-    (provider as any).fetchedModels = null;
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).fetchedModels = null;
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     await provider.fetchModels();
     expect(mockList).toHaveBeenCalledTimes(2);
@@ -448,7 +448,7 @@ describe('Fetch Models Edge Cases', () => {
   it('should handle API failure during model fetch', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockList = vi.fn().mockRejectedValue(new Error('API error'));
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toEqual([]);
@@ -456,7 +456,7 @@ describe('Fetch Models Edge Cases', () => {
 
   it('should handle empty model list from API', async () => {
     const mockList = vi.fn().mockResolvedValue({ data: [] });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toEqual([]);
@@ -475,7 +475,7 @@ describe('Fetch Models Edge Cases', () => {
         },
       ],
     });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toEqual([]);
@@ -494,7 +494,7 @@ describe('Fetch Models Edge Cases', () => {
         },
       ],
     });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     expect(models).toHaveLength(1);
@@ -888,7 +888,7 @@ describe('Model Information Edge Cases', () => {
     await provider['initClient'](true);
 
     // Mock the client to throw an error
-    (provider as any).client = {
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = {
       models: {
         list: vi.fn().mockRejectedValue(new Error('API error')),
       },
@@ -907,7 +907,7 @@ describe('Model Information Edge Cases', () => {
     await provider['initClient'](true);
 
     // Mock the client to return an empty list
-    (provider as any).client = {
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = {
       models: {
         list: vi.fn().mockResolvedValue({ data: [] }),
       },
@@ -962,7 +962,7 @@ describe('Per-model output token limits', () => {
         },
       ],
     });
-    (provider as any).client = { models: { list: mockList } };
+    (provider as unknown as { client?: unknown; fetchedModels?: unknown }).client = { models: { list: mockList } };
 
     const models = await provider.fetchModels();
     const small = models.find(m => m.id === 'mistral-small-latest');
