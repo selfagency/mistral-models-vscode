@@ -14,12 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Event Notifications**: Added `onDidChangeLanguageModelChatInformation` event firing when API key changes, enabling real-time model list updates in VS Code
 - **VS Code 1.96+ Support**: Added `ChatResponseTurn2` support for forward compatibility with newer VS Code versions
 - **Test Expansion**: Comprehensive integration test suite covering cache behavior, event management, tool call ID mapping, and model formatting (128 tests, 100% passing)
+- **Agentsy package migration**: Switched runtime streaming imports from `@agentsy/core/*` subpaths to the published split packages `@agentsy/normalizers` and `@agentsy/processor`, while keeping `@agentsy/core` available as a supporting dependency for `@agentsy/vscode`
 
 ### Changed
 
 - Improved tool call buffering in stream handler for more robust JSON parsing from LLM streams
 - Enhanced error handling to distinguish between different failure scenarios (authentication, rate limiting, service availability)
 - Optimized model caching with automatic expiry and manual reset on API key change
+- Removed direct `@agentsy/core/*` import usage from the provider and updated tests to reject legacy subpath imports
 
 ### Fixed
 

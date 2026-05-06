@@ -87,6 +87,8 @@
   ],
   "dependencies": {
     "@agentsy/core": "^0.1.0",
+    "@agentsy/normalizers": "^0.1.2",
+    "@agentsy/processor": "^0.1.2",
     "@agentsy/vscode": "^0.1.0",
     "@mistralai/mistralai": "^1.14.1",
     "tiktoken": "^1.0.22"
@@ -110,7 +112,6 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
-    "vscode": "^1.1.37",
     "zx": "^8.8.5"
   },
   "engines": {

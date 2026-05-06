@@ -40,7 +40,7 @@ vi.mock('@agentsy/vscode', () => ({
   cancellationTokenToAbortSignal: vi.fn().mockImplementation(() => new AbortController().signal),
 }));
 
-vi.mock('@agentsy/core/normalizers', () => ({
+vi.mock('@agentsy/normalizers', () => ({
   normalizeMistralChunk: vi.fn().mockImplementation((raw: unknown) => {
     if (!raw) {
       return null;
@@ -48,6 +48,14 @@ vi.mock('@agentsy/core/normalizers', () => ({
     return { chunk: { content: 'ok' } };
   }),
 }));
+
+vi.mock('@agentsy/core/normalizers', () => {
+  throw new Error('legacy @agentsy/core/normalizers should not be imported');
+});
+
+vi.mock('@agentsy/core/processor', () => {
+  throw new Error('legacy @agentsy/core/processor should not be imported');
+});
 
 // ── Phase 5: Additional Integration Tests ──────────────────────────────────
 

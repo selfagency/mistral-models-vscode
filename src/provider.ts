@@ -2,14 +2,14 @@ import { Mistral } from '@mistralai/mistralai';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
   CancellationToken,
+  ChatResponseStream,
   Event,
   EventEmitter,
   ExtensionContext,
   LanguageModelChatInformation,
-  LanguageModelChatRequestMessage,
   LanguageModelChatMessageRole,
   LanguageModelChatProvider,
-  ChatResponseStream,
+  LanguageModelChatRequestMessage,
   LanguageModelChatToolMode,
   LanguageModelDataPart,
   LanguageModelResponsePart,
@@ -606,8 +606,8 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     try {
       const abortSignal = cancellationTokenToAbortSignal(token);
       const [{ normalizeMistralChunk }, { LLMStreamProcessor }] = await Promise.all([
-        import('@agentsy/core/normalizers'),
-        import('@agentsy/core/processor'),
+        import('@agentsy/normalizers'),
+        import('@agentsy/processor'),
       ]);
 
       // Create chat completion request with streaming
@@ -729,7 +729,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     try {
       const [{ createVSCodeAgentLoop, cancellationTokenToAbortSignal }, { normalizeMistralChunk }] = await Promise.all([
         import('@agentsy/vscode'),
-        import('@agentsy/core/normalizers'),
+        import('@agentsy/normalizers'),
       ]);
 
       const renderer = createVSCodeAgentLoop({
@@ -793,7 +793,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
   }
 
   /**
-   * Translate OutputPart instances from @agentsy/core into VS Code LanguageModelResponseParts.
+   * Translate OutputPart instances from @agentsy/processor into VS Code LanguageModelResponseParts.
    */
   private _emitParts(parts: OutputPart[], progress: Progress<LanguageModelResponsePart>): void {
     for (const part of parts) {
