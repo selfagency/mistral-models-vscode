@@ -65,9 +65,6 @@ export function activate(context: vscode.ExtensionContext) {
         .join('');
     };
 
-    // Get ChatResponseTurn2 constructor if available (VS Code 1.96+)
-    const ChatResponseTurn2 = (vscode as unknown as { ChatResponseTurn2?: any }).ChatResponseTurn2;
-
     for (const turn of chatContext.history) {
       if (turn instanceof vscode.ChatRequestTurn) {
         messages.push(vscode.LanguageModelChatMessage.User(turn.prompt));
@@ -79,16 +76,6 @@ export function activate(context: vscode.ExtensionContext) {
       } else if (maybeChatResponseTurn2Ctor && (turn as object) instanceof maybeChatResponseTurn2Ctor) {
         const responseParts = (turn as { response: readonly unknown[] }).response;
         const text = extractResponseText(responseParts);
-        if (text) {
-          messages.push(vscode.LanguageModelChatMessage.Assistant(text));
-        }
-      } else if (ChatResponseTurn2 && (turn as any) instanceof ChatResponseTurn2) {
-        // Handle ChatResponseTurn2 (VS Code 1.96+)
-        const response = (turn as any).response as any[];
-        const text = response
-          .filter((r): r is vscode.ChatResponseMarkdownPart => r instanceof vscode.ChatResponseMarkdownPart)
-          .map(r => r.value.value)
-          .join('');
         if (text) {
           messages.push(vscode.LanguageModelChatMessage.Assistant(text));
         }
@@ -107,7 +94,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const participant = vscode.chat.createChatParticipant('mistral-models-vscode.mistral', participantHandler);
-  participant.iconPath = vscode.Uri.file(`${context.extensionUri.fsPath}/logo.png`);
+  participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'logo.png');
   context.subscriptions.push(participant);
 }
 
