@@ -35,6 +35,7 @@ import {
   Progress,
   ProvideLanguageModelChatResponseOptions,
   window,
+  workspace,
 } from 'vscode';
 
 // Added isAsyncIterable, toAsyncIterable for async iterable fix
@@ -1094,7 +1095,12 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       if (part.type === 'text') {
         emitTextPart(part.text);
       } else if (part.type === 'thinking') {
-        this.log.debug(`[Mistral] thinking: ${part.text.slice(0, 200)}`);
+        // Respect user setting: thinking blocks are not rendered in provider path.
+        // Keep minimal debug visibility without leaking raw tags to users.
+        const showThinking = workspace.getConfiguration('mistral').get<boolean>('thinkingSupport', true);
+        if (showThinking) {
+          this.log.debug(`[Mistral] thinking: ${part.text.slice(0, 200)}`);
+        }
       } else if (part.type === 'tool_call') {
         const vsPart = toVSCodeToolCallPart(part, { fallbackCallId: () => this.generateToolCallId() });
         const mappedCallId = this.getOrCreateVsCodeToolCallId(vsPart.callId);
@@ -1181,11 +1187,14 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         }
 
         if (part instanceof LanguageModelDataPart) {
-          if (part.mimeType?.startsWith('image/')) {
-            parts.push({ type: 'image', mimeType: part.mimeType, data: part.data });
-          } else {
-            parts.push({ type: 'text', text: `[data:${part.mimeType}]` });
-          }
+          const mime = part.mimeType ?? '';
+          if (mime.startsWith('image/')) {
+            parts.push({ type: 'image', mimeType: mime, data: part.data });
+          } else if (!/stateful/i.test(mime) && mime.toLowerCase() !== 'stateful_marker') {
+            // Preserve non-image data as a concise placeholder for model grounding
+            // (e.g., PDFs), but suppress VS Code/Copilot stateful markers.
+            parts.push({ type: 'text', text: `[data:${mime}]` });
+          } // else: drop stateful markers entirely
           return;
         }
 
