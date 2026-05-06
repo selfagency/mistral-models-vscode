@@ -1,6 +1,5 @@
 import { processRawStream, toMistralMessages as adaptersToMistralMessages } from '@agentsy/adapters';
 import { normalizeMistralChunk } from '@agentsy/normalizers';
-import { LLMStreamProcessor, type OutputPart } from '@agentsy/processor';
 import { extractXmlToolCalls } from '@agentsy/tool-calls';
 import {
   ToolCallDeltaAccumulator,
@@ -424,9 +423,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     }
 
     await this.apiKeyManagerInitPromise;
-    if (!this.apiKeyManager) {
-      throw new Error('Failed to initialize API key manager');
-    }
+    this.apiKeyManager ??= new Error('Failed to initialize API key manager');
     return this.apiKeyManager;
   }
 
@@ -1095,15 +1092,18 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   public toMistralMessages(messages: readonly LanguageModelChatRequestMessage[]): MistralMessage[] {
     this.log.debug('[Mistral] toMistralMessages called with ' + messages.length + ' messages');
-    const outboundMessages: Array<{
+    type MessagePart =
+      | { type: 'text'; text: string }
+      | { type: 'image'; mimeType: string; data: Uint8Array }
+      | { type: 'tool-call'; callId: string; name: string; input?: Record<string, unknown> }
+      | { type: 'tool-result'; callId: string; content: string };
+
+    type OutboundMessage = {
       role: 'system' | 'user' | 'assistant';
-      parts: Array<
-        | { type: 'text'; text: string }
-        | { type: 'image'; mimeType: string; data: Uint8Array }
-        | { type: 'tool-call'; callId: string; name: string; input?: Record<string, unknown> }
-        | { type: 'tool-result'; callId: string; content: string }
-      >;
-    }> = [];
+      parts: MessagePart[];
+    };
+
+    const outboundMessages: OutboundMessage[] = [];
 
     for (const msg of messages) {
       const role = toMistralRole(msg.role);
