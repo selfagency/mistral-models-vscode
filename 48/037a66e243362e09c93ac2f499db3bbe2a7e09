@@ -1,0 +1,41 @@
+plans/remediation.plan.md
+  h_5cf1e2c1161853 1-734
+package.json
+  h_5cf1e2c1161853 4,135
+plans/upgrade.plan.md
+  h_5cf1e2c1161853 4,7-9
+src/extension.ts
+  h_5cf1e2c1161853 5-6,8-11,13,43
+  0af227a135cc6a07 22,30-32,49-52,56-62,74-75
+CHANGELOG.md
+  h_5cf1e2c1161853 18-23,30-32
+src/provider.ts
+  h_5cf1e2c1161853 3,73-75,77-79,86-95,157-176,183-190,197-214,216-245,282,456,670,677-684,688,730-736,745-747,766-770,782-786,802-805,812-818,845,877,884-892,894-900,932-933,942-946,949-952,961-969,984-985,1014-1049
+  0af227a135cc6a07 177-182,191-196,215,336-341,443,445,447-449,521,552,559,563,567,599-601,613,739,1132,1134,1185,1192-1193,1232-1234,1241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "48037a66e243362e09c93ac2f499db3bbe2a7e09",
+  "prompts": {
+    "0af227a135cc6a07": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "aa2e0901-c5cc-499c-ad80-9d32a068cc53",
+        "model": "copilot/gpt-5.4-mini"
+      },
+      "human_author": "Daniel Sieradski",
+      "messages": [],
+      "total_additions": 542,
+      "total_deletions": 353,
+      "accepted_lines": 252,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e62cb63e339ac5db3523b85fb59df127e755068368957100c6f702c858ab57c4"
+    }
+  },
+  "humans": {
+    "h_5cf1e2c1161853": {
+      "author": "Daniel Sieradski"
+    }
+  }
+}
