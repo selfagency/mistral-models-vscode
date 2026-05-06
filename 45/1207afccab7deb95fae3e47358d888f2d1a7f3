@@ -1,0 +1,67 @@
+package.json
+  s_201333f5570ce9::t_44a869887bd509 140
+plans/upgrade.plan.md
+  s_201333f5570ce9::t_5024bb5e82f7c2 11
+  s_201333f5570ce9::t_f64aff7c5fa371 12-37
+  h_627b419bd8fa0f 1927,2027
+plans/AGENTSY_ADOPTION_PLAN.md
+  ai_agent 5,7-12,15,21-23,26-30,34-42,46-50,54-58,69-70,72-75,81-127,129,132,135-142,145-149,152-153,167,173,179,195,201,207,223,229,235,251,257,263,277,281,285,296-313,316-318,321-345,352-354,357-360,363-365,368-370,376-381
+pnpm-lock.yaml
+  ai_agent 11-16,23-34,38-40,111-116,123-134,138-140,2442-2445,2450-2457,2460-2461,3389-3392,4559-4560
+src/extension.ts
+  ai_agent 35-37
+  s_1e5866ef08c825::t_f4c0c096875d46 4-5,18-21,24-34,38,40,76-81,96,105-108
+plans/REMEDIATION_STATUS.md
+  s_201333f5570ce9::t_851a5701ba660c 4-37
+src/provider.test.ts
+  s_1e5866ef08c825::t_1db2a0f50c2b6d 921-973
+  s_201333f5570ce9::t_b9fecd6ad9eac9 1108,1111,1126
+  s_201333f5570ce9::t_f41422398dfcfe 12-55,57-68,70,76-78
+  ai_agent 56
+  s_1e5866ef08c825::t_5f92a84231c38b 71,122
+  s_201333f5570ce9::t_8becb953509bf8 69,72-75,79-121
+CHANGELOG.md
+  h_627b419bd8fa0f 48-49,53,55,63,73,83-84,94,98,112-114,118-122,126,130-132,136-139
+src/extension.test.ts
+  s_1e5866ef08c825::t_2dd0be2d9579ea 56,58-59,62,65,188-190
+  s_1e5866ef08c825::t_f11e6ef0433dd0 212-213,215
+src/provider.ts
+  s_201333f5570ce9::t_e5ccc34fdb2fca 1-3,5-13,816,828-830,832,838,842-852,862-863,866-869,1009-1013,1015,1042-1045,1047,1098-1106,1110-1116,1120,1126,1128,1140-1143,1158,1160-1161,1163,1168-1169,1172-1175,1178,1181-1195,1199-1200
+  s_201333f5570ce9::t_e85a4846dd42b5 1144
+  s_201333f5570ce9::t_8ef09385283cfa 4,14,293
+  s_1e5866ef08c825::t_6f999c8685053f 223-234,236,239
+  s_201333f5570ce9::t_c641be59be4651 727,783-786,854,857-860,864-865
+  ai_agent 822-827,839-841,1196-1198
+  s_201333f5570ce9::t_f598833ebcc610 1014,1018-1032,1034-1037
+  h_627b419bd8fa0f 17
+  s_1e5866ef08c825::t_dcc8a4d3d5b38c 533,569-574,577,581,585,631,634-637,653-656,659-662,716,930,1245-1256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "451207afccab7deb95fae3e47358d888f2d1a7f3",
+  "prompts": {},
+  "humans": {
+    "h_627b419bd8fa0f": {
+      "author": "Daniel Sieradski <2541728+selfagency@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_1e5866ef08c825": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "c06062e8-e5cd-4f49-83e4-8891ff952df0",
+        "model": "unknown"
+      },
+      "human_author": "Daniel Sieradski <2541728+selfagency@users.noreply.github.com>"
+    },
+    "s_201333f5570ce9": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "714fb8c2-bf75-4269-9881-575e56dd6e5d",
+        "model": "unknown"
+      },
+      "human_author": "Daniel Sieradski <2541728+selfagency@users.noreply.github.com>"
+    }
+  }
+}
