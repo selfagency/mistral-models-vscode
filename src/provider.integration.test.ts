@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type CancellationToken,
-  type ChatResponseStream,
   LanguageModelChatMessageRole,
   LanguageModelTextPart,
+  type CancellationToken,
+  type ChatResponseStream,
   type ExtensionContext,
 } from 'vscode';
 import { MistralChatModelProvider, formatModelName, type MistralModel } from './provider.js';

@@ -16,15 +16,15 @@ import { Mistral } from '@mistralai/mistralai';
 import { trace, type Span } from '@opentelemetry/api';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
+  EventEmitter,
   LanguageModelChatMessageRole,
   LanguageModelChatToolMode,
-  LanguageModelTextPart,
-  EventEmitter,
-  window,
-  workspace,
   LanguageModelDataPart,
+  LanguageModelTextPart,
   LanguageModelToolCallPart,
   LanguageModelToolResultPart,
+  window,
+  workspace,
   type CancellationToken,
   type ChatResponseStream,
   type Event,

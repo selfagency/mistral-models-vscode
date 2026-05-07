@@ -1,18 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CancellationToken,
   ExtensionContext,
   LanguageModelChatInformation,
+  LanguageModelChatMessage,
   LanguageModelChatMessageRole,
   LanguageModelChatRequestMessage,
+  LanguageModelChatToolMode,
+  LanguageModelResponsePart,
   LanguageModelTextPart,
   LanguageModelToolResultPart,
-  LanguageModelChatMessage,
-  LanguageModelResponsePart,
   Progress,
 } from 'vscode';
 import { MistralChatModelProvider, MistralModel } from './provider.js';
-import { LanguageModelChatToolMode } from 'vscode';
 
 // Local, file-scoped mocks so we don't affect existing tests
 vi.mock('@agentsy/vscode', () => {
