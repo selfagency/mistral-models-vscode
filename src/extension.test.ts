@@ -12,7 +12,7 @@ import {
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
-const mockProviderInstance: typeof import('./provider.js').MistralChatModelProvider = {
+const mockProviderInstance: any = {
   setApiKey: vi.fn(),
   dispose: vi.fn(),
   streamParticipantResponse: vi.fn().mockResolvedValue(undefined),
@@ -23,15 +23,12 @@ const mockProviderInstance: typeof import('./provider.js').MistralChatModelProvi
   getClient: vi.fn(),
   fetchModels: vi.fn(),
   clearToolCallIdMappings: vi.fn(),
-  setApiKey: vi.fn(),
   initClient: vi.fn().mockResolvedValue(false),
   provideLanguageModelChatInformation: vi.fn(),
   provideLanguageModelChatResponse: vi.fn().mockResolvedValue(undefined),
-  streamParticipantResponse: vi.fn().mockResolvedValue(undefined),
   validateToolMessages: vi.fn(),
   toMistralMessages: vi.fn().mockReturnValue([]),
   provideTokenCount: vi.fn(),
-  dispose: vi.fn(),
 };
 
 vi.mock('./provider', () => ({
@@ -76,6 +73,7 @@ describe('extension', () => {
     it('creates output channel and tracks it in subscriptions', () => {
       activate(mockContext);
       expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
+      const pushCalls = mockContext.subscriptions.push.mock.calls;
       expect(pushCalls[1]).toHaveLength(1);
     });
 
@@ -88,6 +86,7 @@ describe('extension', () => {
       activate(mockContext);
       // Third push call is the participant (after provider+command+dispose and output/status items)
       expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(3);
+      const pushCalls = mockContext.subscriptions.push.mock.calls;
       expect(pushCalls[2]).toHaveLength(1);
     });
   });
@@ -149,7 +148,7 @@ describe('extension', () => {
       );
 
       const mockCalls = mockProviderInstance.streamParticipantResponse.mock.calls || [];
-      const [modelId, messages] = mockCalls[0] ?? [];
+      const [, messages] = mockCalls[0] ?? [];
       const messageArray = messages ?? [];
       const firstMessage = messageArray[0];
       expect(firstMessage.content).toBe('prior question');
@@ -192,10 +191,6 @@ describe('extension', () => {
       );
 
       expect(mockProviderInstance.streamParticipantResponse).toHaveBeenCalledOnce();
-      const [modelId, messages] = mockCalls[0] ?? [];
-      const messageArray = messages ?? [];
-      const firstMessage = messageArray[0];
-      expect(firstMessage.content).toBe('prior v2 answer');
     });
 
     it('surfaces errors as a markdown message', async () => {

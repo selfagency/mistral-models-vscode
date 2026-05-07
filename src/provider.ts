@@ -452,7 +452,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
 
         manager.onDidChangeApiKey((_event, newKey) => {
           this.client = newKey ? new Mistral({ apiKey: newKey }) : null;
-          this.fetchedModels = undefined;
+          this.fetchedModels = null;
           this.modelsCacheExpiry = 0;
           this._onDidChangeLanguageModelChatInformation.fire(undefined);
         });
@@ -501,19 +501,30 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       }
 
       const rawModels = Array.from(byId.values()).map(obj => {
-        const id = obj.id;
+        const id = obj.id as string;
         const capabilities = obj.capabilities as Record<string, unknown> | undefined;
+        const typedObj = obj as {
+          id: string;
+          name?: string | Record<string, unknown>;
+          description?: string;
+          maxContextLength?: number;
+          capabilities?: Record<string, unknown>;
+          defaultModelTemperature?: number;
+        };
         return {
           id,
-          originalName: (typeof obj.name === 'string' && obj.name) || formatModelName(id),
-          detail: typeof obj.description === 'string' ? obj.description : undefined,
-          maxInputTokens: typeof obj.maxContextLength === 'number' ? obj.maxContextLength : 32768,
+          originalName: (typeof typedObj.name === 'string' && typedObj.name) || formatModelName(id),
+          detail: typeof typedObj.description === 'string' ? typedObj.description : undefined,
+          maxInputTokens: typeof typedObj.maxContextLength === 'number' ? (typedObj.maxContextLength as number) : 32768,
           maxOutputTokens: getModelOutputLimit(id),
           defaultCompletionTokens: DEFAULT_COMPLETION_TOKENS,
           toolCalling: !!capabilities?.functionCalling,
           supportsParallelToolCalls: !!capabilities?.functionCalling,
           supportsVision: !!capabilities?.vision,
-          temperature: typeof obj.defaultModelTemperature === 'number' ? obj.defaultModelTemperature : undefined,
+          temperature:
+            typeof typedObj.defaultModelTemperature === 'number'
+              ? (typedObj.defaultModelTemperature as number)
+              : undefined,
         };
       });
 
@@ -889,10 +900,6 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
             'input.tokens': output.usage.inputTokens,
             'output.tokens': output.usage.outputTokens,
           });
-          const mappedUsage = mapUsageToVSCode(output.usage);
-          if (mappedUsage) {
-            this.log.debug(`Mistral straggler: [tool-call:${mappedCallId} ${xmlToolCall.name}]`);
-          }
         }
 
         this._emitProcessedParts(output.parts, progress, renderer, toolCallAccumulator, xmlFilter);
@@ -1054,7 +1061,14 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     asyncIterable: AsyncIterable<unknown>,
     renderer: { writeChunk(chunk: unknown): Promise<void>; end(): Promise<void> },
     token: CancellationToken,
-    _span: unknown,
+    span: {
+      isRecording(): boolean;
+      addEvent(
+        eventName: string,
+        attributes?: Record<string, unknown> | Date | undefined,
+        startTime?: Date | undefined,
+      ): this;
+    },
     startTime: number,
   ): Promise<number | undefined> {
     let ttft: number | undefined;
@@ -1273,8 +1287,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
         this.reverseToolCallIdMapping.set(generated, originalId);
         return generated;
       },
-      onWarning: (message, context) => {
-        this.log.warn(`Mistral stream parser: ${msg}${ctxStr}`);
+      onWarning: (message: string, context?: Record<string, unknown>) => {
+        const ctxStr = context ? ` ${JSON.stringify(context)}` : '';
+        this.log.warn(`Mistral stream parser: ${message}${ctxStr}`);
       },
     }) as unknown as MistralMessage[];
   }
