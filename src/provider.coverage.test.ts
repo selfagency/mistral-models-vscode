@@ -3,10 +3,10 @@ import {
   LanguageModelChatMessageRole,
   LanguageModelTextPart,
   LanguageModelToolResultPart,
-  LanguageModelToolCallPart,
   LanguageModelChatMessage,
 } from 'vscode';
 import { MistralChatModelProvider } from './provider.js';
+import { LanguageModelChatToolMode } from 'vscode';
 
 // Local, file-scoped mocks so we don't affect existing tests
 vi.mock('@agentsy/vscode', () => {
@@ -90,7 +90,7 @@ describe('provider: retry and streaming coverage', () => {
     const p = provider.provideLanguageModelChatResponse(
       model,
       msgs as any,
-      {},
+      { toolMode: LanguageModelChatToolMode.Auto },
       // Renderer writes forward to progress via our mock
       {
         report: (part: any) => {
