@@ -12,22 +12,34 @@ import {
 } from 'vscode';
 import { activate, deactivate } from './extension.js';
 
-const mockProviderInstance = {
+const mockProviderInstance: typeof import('./provider.js').MistralChatModelProvider = {
   setApiKey: vi.fn(),
   dispose: vi.fn(),
   streamParticipantResponse: vi.fn().mockResolvedValue(undefined),
   _onDidChangeLanguageModelChatInformation: { fire: vi.fn(), dispose: vi.fn() },
+  generateToolCallId: vi.fn(),
+  getOrCreateVsCodeToolCallId: vi.fn(),
+  getMistralToolCallId: vi.fn(),
+  getClient: vi.fn(),
+  fetchModels: vi.fn(),
+  clearToolCallIdMappings: vi.fn(),
+  setApiKey: vi.fn(),
+  initClient: vi.fn().mockResolvedValue(false),
+  provideLanguageModelChatInformation: vi.fn(),
+  provideLanguageModelChatResponse: vi.fn().mockResolvedValue(undefined),
+  streamParticipantResponse: vi.fn().mockResolvedValue(undefined),
+  validateToolMessages: vi.fn(),
+  toMistralMessages: vi.fn().mockReturnValue([]),
+  provideTokenCount: vi.fn(),
+  dispose: vi.fn(),
 };
 
 vi.mock('./provider', () => ({
-  MistralChatModelProvider: vi.fn().mockImplementation(function (
-    _context: vscode.ExtensionContext,
-    _logOutputChannel: vscode.LogOutputChannel,
-    _autoInit?: boolean,
-    _statusBarItem?: vscode.StatusBarItem,
-  ) {
-    return mockProviderInstance;
-  }),
+  MistralChatModelProvider: vi
+    .fn()
+    .mockImplementation((context: vscode.ExtensionContext, _logOutputChannel?: vscode.LogOutputChannel) => {
+      return mockProviderInstance;
+    }),
 }));
 
 describe('extension', () => {
@@ -40,6 +52,7 @@ describe('extension', () => {
     vi.clearAllMocks();
     mockProviderInstance.setApiKey.mockResolvedValue(undefined);
     mockProviderInstance.streamParticipantResponse.mockResolvedValue(undefined);
+    (mockContext as any).subscriptions = { push: vi.fn() };
   });
 
   describe('activate', () => {
@@ -56,13 +69,14 @@ describe('extension', () => {
     it('pushes provider and command disposables into context.subscriptions', () => {
       activate(mockContext);
       // First push call is provider + command
-      expect(mockContext.subscriptions.push.mock.calls[0]).toHaveLength(2);
+      const pushCalls = mockContext.subscriptions.push.mock.calls;
+      expect(pushCalls[0]).toHaveLength(2);
     });
 
     it('creates output channel and tracks it in subscriptions', () => {
       activate(mockContext);
       expect(window.createOutputChannel).toHaveBeenCalledWith('Mistral Models', { log: true });
-      expect(mockContext.subscriptions.push.mock.calls[1]).toHaveLength(1);
+      expect(pushCalls[1]).toHaveLength(1);
     });
 
     it('creates the @mistral chat participant', () => {
@@ -74,20 +88,22 @@ describe('extension', () => {
       activate(mockContext);
       // Third push call is the participant (after provider+command+dispose and output/status items)
       expect(mockContext.subscriptions.push).toHaveBeenCalledTimes(3);
-      expect(mockContext.subscriptions.push.mock.calls[2]).toHaveLength(1);
+      expect(pushCalls[2]).toHaveLength(1);
     });
   });
 
   describe('activate — participant handler', () => {
+    let pushCalls: ReturnType<typeof mockContext.copyWithSubscriptions.push.mock.calls>;
+
     async function getHandler() {
       activate(mockContext);
-      const [, handler] = (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.calls[0];
+      pushCalls = (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.calls || [];
+      const handler = pushCalls[0]?.[1];
       return handler;
     }
 
     it('sends history + prompt to provider.streamParticipantResponse', async () => {
       const handler = await getHandler();
-
       const mockStream = { markdown: vi.fn(), progress: vi.fn() };
 
       const mockRequest = { prompt: 'hello', model: { id: 'mistral-large-latest' } };
@@ -97,10 +113,11 @@ describe('extension', () => {
       await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
       expect(mockProviderInstance.streamParticipantResponse).toHaveBeenCalledOnce();
-      const [modelId, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
+      const mockCalls = mockProviderInstance.streamParticipantResponse.mock.calls || [];
+      const [modelId, messages] = mockCalls[0] ?? [];
       expect(modelId).toBe('mistral-large-latest');
-      // Last message is the current prompt
-      expect(messages.at(-1).content).toBe('hello');
+      const lastMessage = messages?.at(-1);
+      expect(lastMessage.content).toBe('hello');
     });
 
     it('passes stream object through to provider', async () => {
@@ -131,9 +148,13 @@ describe('extension', () => {
         { isCancellationRequested: false },
       );
 
-      const [, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
-      expect(messages[0].content).toBe('prior question');
-      expect(messages[1].content).toBe('follow-up');
+      const mockCalls = mockProviderInstance.streamParticipantResponse.mock.calls || [];
+      const [modelId, messages] = mockCalls[0] ?? [];
+      const messageArray = messages ?? [];
+      const firstMessage = messageArray[0];
+      expect(firstMessage.content).toBe('prior question');
+      const secondMessage = messageArray[1];
+      expect(secondMessage.content).toBe('follow-up');
     });
 
     it('includes prior ChatResponseTurn as an Assistant message in history', async () => {
@@ -171,8 +192,10 @@ describe('extension', () => {
       );
 
       expect(mockProviderInstance.streamParticipantResponse).toHaveBeenCalledOnce();
-      const [, messages] = mockProviderInstance.streamParticipantResponse.mock.calls[0];
-      expect(messages[0].content).toBe('prior v2 answer');
+      const [modelId, messages] = mockCalls[0] ?? [];
+      const messageArray = messages ?? [];
+      const firstMessage = messageArray[0];
+      expect(firstMessage.content).toBe('prior v2 answer');
     });
 
     it('surfaces errors as a markdown message', async () => {
@@ -223,7 +246,9 @@ describe('extension', () => {
 
       activate(mockContext);
 
-      const participantInstance = (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.results[0].value;
+      const createChatParticipantMock = chat.createChatParticipant as ReturnType<typeof vi.fn>;
+      const mockResults = createChatParticipantMock.mock.results[0];
+      const participantInstance = mockResults.value;
       expect(participantInstance.iconPath).toBe(sentinel);
     });
 

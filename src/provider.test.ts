@@ -54,11 +54,11 @@ vi.mock('@agentsy/vscode', () => {
     },
   });
 
-  const createChunkNormalizerStub = <TEvent>(mapper: (event: TEvent) => unknown | null) =>
+  const createChunkNormalizerStub = <TEvent, TOut>(mapper: (event: TEvent) => TOut) =>
     async function* (source: AsyncIterable<TEvent>) {
       for await (const event of source) {
         const mapped = mapper(event);
-        if (mapped) {
+        if (mapped !== undefined) {
           yield mapped;
         }
       }
@@ -1462,10 +1462,8 @@ describe('Stream Parsing Logic', () => {
     // This test would verify the integration between stream parsing components
     // For now, we'll test that the provider can be instantiated and has the expected methods
     expect(provider).toBeDefined();
-    expect(typeof (provider as unknown as { toMistralMessages: unknown }).toMistralMessages).toBe('function');
-    expect(typeof (provider as unknown as { streamParticipantResponse: unknown }).streamParticipantResponse).toBe(
-      'function',
-    );
+    expect(typeof (provider as any).toMistralMessages).toBe('function');
+    expect(typeof (provider as any).streamParticipantResponse).toBe('function');
   });
 });
 
@@ -1477,7 +1475,7 @@ describe('createVSCodeAgentLoop', () => {
 
     // Test that the provider has the expected methods for streaming
     expect(provider).toBeDefined();
-    expect(typeof provider['streamParticipantResponse']).toBe('function');
+    expect(typeof (provider as any).streamParticipantResponse).toBe('function' as const);
   });
 });
 
@@ -1521,7 +1519,7 @@ describe('Expanded Provider Integration Coverage', () => {
     await provider['initClient'](true);
 
     // Test that the provider has the expected streaming methods
-    expect(typeof provider['streamParticipantResponse']).toBe('function');
-    expect(typeof provider['toMistralMessages']).toBe('function');
+    expect(typeof provider['streamParticipantResponse']).toBe('function' as const);
+    expect(typeof provider['toMistralMessages']).toBe('function' as const);
   });
 });
