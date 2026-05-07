@@ -24,6 +24,15 @@ export interface LanguageModelChatProvider {}
 
 export type Event<T> = (listener: (e: T) => void, thisArgs?: any, disposables?: any) => any;
 
+export enum LanguageModelChatMessageRole {
+  User = 1,
+  Assistant = 2,
+}
+
+export class LanguageModelTextPart {
+  constructor(public readonly value: string) {}
+}
+
 export class EventEmitter<T> {
   private listeners: Array<(e: T) => void> = [];
 
@@ -54,11 +63,6 @@ export class EventEmitter<T> {
   }
 }
 
-export enum LanguageModelChatMessageRole {
-  User = 1,
-  Assistant = 2,
-}
-
 export enum LanguageModelChatToolMode {
   Auto = 0,
   Required = 1,
@@ -68,10 +72,6 @@ export enum InputBoxValidationSeverity {
   Info = 1,
   Warning = 2,
   Error = 3,
-}
-
-export class LanguageModelTextPart {
-  constructor(public readonly value: string) {}
 }
 
 export class LanguageModelToolCallPart {

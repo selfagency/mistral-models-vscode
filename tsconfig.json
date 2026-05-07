@@ -6,12 +6,12 @@
 		"module": "Preserve",
 		"moduleResolution": "bundler",
 		"target": "ES2024",
-		"lib": [
-			"ES2024"
-		],
 		"types": [
 			"node",
 			"vscode"
+		],
+		"lib": [
+			"ES2024"
 		],
 		"sourceMap": true,
 		"rootDir": "src",
