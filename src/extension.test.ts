@@ -218,7 +218,7 @@ describe('extension', () => {
 
   describe('additional coverage', () => {
     it('sets participant iconPath from Uri.joinPath', () => {
-      const sentinel = { path: 'sentinel' } as any;
+      const sentinel = { path: 'sentinel' } as unknown as vscode.Uri;
       (vscode.Uri.joinPath as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(sentinel);
 
       activate(mockContext);
@@ -238,15 +238,20 @@ describe('extension', () => {
       }
       const getHandler = () =>
         (chat.createChatParticipant as ReturnType<typeof vi.fn>).mock.calls[0][1] as unknown as (
-          ...args: any[]
+          ...args: unknown[]
         ) => Promise<void>;
 
       const stream = { markdown: vi.fn(), progress: vi.fn() };
       mockProviderInstance.streamParticipantResponse.mockRejectedValueOnce(error);
 
-      await getHandler()({ prompt: 'x', model: { id: 'mistral' } }, { history: [] }, stream as any, {
-        isCancellationRequested: false,
-      });
+      await getHandler()(
+        { prompt: 'x', model: { id: 'mistral' } },
+        { history: [] },
+        stream as unknown as vscode.ChatResponseStream,
+        {
+          isCancellationRequested: false,
+        },
+      );
 
       const msg = (stream.markdown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string | undefined;
       expect(msg).toMatch(expected);

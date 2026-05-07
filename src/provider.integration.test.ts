@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CancellationToken, ChatResponseStream, LanguageModelChatMessageRole, LanguageModelTextPart } from 'vscode';
-import { MistralChatModelProvider, formatModelName } from './provider.js';
+import {
+  type CancellationToken,
+  type ChatResponseStream,
+  LanguageModelChatMessageRole,
+  LanguageModelTextPart,
+  type ExtensionContext,
+} from 'vscode';
+import { MistralChatModelProvider, formatModelName, type MistralModel } from './provider.js';
 
 const mockWriteChunk = vi.fn(async () => {});
 const mockEnd = vi.fn(async () => {});
@@ -70,7 +76,7 @@ describe('TTL Cache Behavior', () => {
       onDidChange: vi.fn(),
     },
     subscriptions: [],
-  } as any;
+  } as unknown as ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,12 +84,12 @@ describe('TTL Cache Behavior', () => {
   });
 
   it('should have 30 minute cache TTL', () => {
-    expect(provider['MODELS_CACHE_TTL_MS']).toBe(30 * 60 * 1000);
+    expect((provider as unknown as { MODELS_CACHE_TTL_MS: number }).MODELS_CACHE_TTL_MS).toBe(30 * 60 * 1000);
   });
 
   it('should track cache expiry time', () => {
     // Initially cache should be expired
-    expect(provider['isCacheExpired']()).toBe(true);
+    expect((provider as unknown as { isCacheExpired(): boolean }).isCacheExpired()).toBe(true);
   });
 });
 
@@ -98,7 +104,7 @@ describe('API Key Event Management', () => {
       onDidChange: vi.fn(),
     },
     subscriptions: [],
-  } as any;
+  } as unknown as ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,7 +128,7 @@ describe('Tool Call ID Mapping', () => {
       onDidChange: vi.fn(),
     },
     subscriptions: [],
-  } as any;
+  } as unknown as ExtensionContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -195,7 +201,7 @@ describe('Participant Streaming', () => {
       onDidChange: vi.fn(),
     },
     subscriptions: [],
-  } as any;
+  } as unknown as ExtensionContext;
 
   const createStream = () => ({
     markdown: vi.fn(),
@@ -248,13 +254,16 @@ describe('Participant Streaming', () => {
         toolCalling: false,
         supportsParallelToolCalls: false,
       },
-    ] as unknown as any);
+    ] as MistralModel[]);
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
-      stream as any,
-      { isCancellationRequested: false, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] }],
+      stream as unknown as ChatResponseStream,
+      {
+        isCancellationRequested: false,
+        onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+      } as unknown as CancellationToken,
     );
 
     expect(mockWriteChunk).toHaveBeenCalled();
@@ -266,9 +275,12 @@ describe('Participant Streaming', () => {
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] } as any],
-      stream as any,
-      { isCancellationRequested: true, onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] }],
+      stream as unknown as ChatResponseStream,
+      {
+        isCancellationRequested: true,
+        onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+      } as unknown as CancellationToken,
     );
 
     expect(stream.markdown).toHaveBeenCalledWith('Request cancelled.');

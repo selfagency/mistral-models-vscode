@@ -914,24 +914,33 @@ describe('Model Information Edge Cases', () => {
     };
 
     const mockCancellationToken = { isCancellationRequested: false, onCancellationRequested: vi.fn() };
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, mockCancellationToken as any);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      mockCancellationToken as unknown as CancellationToken,
+    );
 
     expect(models).toEqual([]);
   });
 
   it('should return empty model list when cancellation is requested before initialization', async () => {
     const token = { isCancellationRequested: true, onCancellationRequested: vi.fn() };
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, token as any);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      token as unknown as CancellationToken,
+    );
     expect(models).toEqual([]);
   });
 
   it('should return empty model list when cancellation is requested after initialization', async () => {
     const mockApiKey = 'test-api-key';
     vi.spyOn(mockContext.secrets, 'get').mockResolvedValue(mockApiKey);
-    await provider['initClient'](true);
+    await (provider as unknown as { initClient(interactive: boolean): Promise<boolean> }).initClient(true);
 
     const token = { isCancellationRequested: true, onCancellationRequested: vi.fn() };
-    const models = await provider.provideLanguageModelChatInformation({ silent: true }, token as any);
+    const models = await provider.provideLanguageModelChatInformation(
+      { silent: true },
+      token as unknown as CancellationToken,
+    );
     expect(models).toEqual([]);
   });
 });
@@ -1452,8 +1461,10 @@ describe('Stream Parsing Logic', () => {
     // This test would verify the integration between stream parsing components
     // For now, we'll test that the provider can be instantiated and has the expected methods
     expect(provider).toBeDefined();
-    expect(typeof provider['toMistralMessages']).toBe('function');
-    expect(typeof provider['streamParticipantResponse']).toBe('function');
+    expect(typeof (provider as unknown as { toMistralMessages: unknown }).toMistralMessages).toBe('function');
+    expect(typeof (provider as unknown as { streamParticipantResponse: unknown }).streamParticipantResponse).toBe(
+      'function',
+    );
   });
 });
 

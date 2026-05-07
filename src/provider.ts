@@ -1,6 +1,6 @@
 import { toMistralMessages as adaptersToMistralMessages, processRawStream } from '@agentsy/adapters';
 import { normalizeMistralChunk } from '@agentsy/normalizers';
-import { type OutputPart } from '@agentsy/processor';
+import type { OutputPart } from '@agentsy/processor';
 import { extractXmlToolCalls } from '@agentsy/tool-calls';
 import {
   accumulateToolCallDeltas,
@@ -16,26 +16,26 @@ import { Mistral } from '@mistralai/mistralai';
 import { trace, type Span } from '@opentelemetry/api';
 import { get_encoding, Tiktoken } from 'tiktoken';
 import {
-  CancellationToken,
-  ChatResponseStream,
-  Event,
-  EventEmitter,
-  ExtensionContext,
-  LanguageModelChatInformation,
   LanguageModelChatMessageRole,
-  LanguageModelChatProvider,
-  LanguageModelChatRequestMessage,
   LanguageModelChatToolMode,
-  LanguageModelDataPart,
-  LanguageModelResponsePart,
   LanguageModelTextPart,
-  LanguageModelToolCallPart,
-  LanguageModelToolResultPart,
-  LogOutputChannel,
-  Progress,
-  ProvideLanguageModelChatResponseOptions,
+  EventEmitter,
   window,
   workspace,
+  LanguageModelDataPart,
+  LanguageModelToolCallPart,
+  LanguageModelToolResultPart,
+  type CancellationToken,
+  type ChatResponseStream,
+  type Event,
+  type ExtensionContext,
+  type LanguageModelChatInformation,
+  type LanguageModelChatProvider,
+  type LanguageModelChatRequestMessage,
+  type LanguageModelResponsePart,
+  type LogOutputChannel,
+  type Progress,
+  type ProvideLanguageModelChatResponseOptions,
 } from 'vscode';
 
 // Added isAsyncIterable, toAsyncIterable for async iterable fix
@@ -1052,6 +1052,9 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       }
 
       await renderer.writeChunk(normalized.chunk);
+      if (span.isRecording()) {
+        span.addEvent('chunk_processed', { content_length: normalized.chunk.content?.length ?? 0 });
+      }
     }
 
     await renderer.end();

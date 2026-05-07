@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  CancellationToken,
+  ExtensionContext,
+  LanguageModelChatInformation,
   LanguageModelChatMessageRole,
+  LanguageModelChatRequestMessage,
   LanguageModelTextPart,
   LanguageModelToolResultPart,
   LanguageModelChatMessage,
+  LanguageModelResponsePart,
+  Progress,
 } from 'vscode';
-import { MistralChatModelProvider } from './provider.js';
+import { MistralChatModelProvider, MistralModel } from './provider.js';
 import { LanguageModelChatToolMode } from 'vscode';
 
 // Local, file-scoped mocks so we don't affect existing tests
@@ -18,14 +24,14 @@ vi.mock('@agentsy/vscode', () => {
     // Minimal implementations used by provider internals
     ToolCallDeltaAccumulator: class {
       finalize() {
-        return [] as any[];
+        return [];
       }
     },
     accumulateToolCallDeltas: vi.fn(),
-    toVSCodeToolCallPart: vi.fn((part: any, opts: { fallbackCallId: () => string }) => ({
-      callId: part.callId ?? opts.fallbackCallId(),
-      name: part.name,
-      input: part.input,
+    toVSCodeToolCallPart: vi.fn((part: Record<string, unknown>, opts: { fallbackCallId: () => string }) => ({
+      callId: (part.callId as string) ?? opts.fallbackCallId(),
+      name: part.name as string,
+      input: part.input as Record<string, unknown>,
     })),
     mapUsageToVSCode: vi.fn(() => ({ promptTokens: 1, completionTokens: 1 })),
   };
@@ -40,8 +46,8 @@ vi.mock('@agentsy/xml-filter', () => ({
 
 vi.mock('@agentsy/adapters', () => ({
   // Ignore the actual client stream; just yield a single normalized output object
-  processRawStream: async function* () {
-    yield { parts: [{ type: 'text', text: 'hello world' }], usage: { inputTokens: 1, outputTokens: 1 } } as any;
+  processRawStream: async function* (): AsyncIterable<unknown> {
+    yield { parts: [{ type: 'text', text: 'hello world' }], usage: { inputTokens: 1, outputTokens: 1 } };
   },
   toMistralMessages: (outbound: unknown) => outbound,
 }));
@@ -52,9 +58,10 @@ const mockContext = {
     store: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
     onDidChange: vi.fn(),
+    keys: vi.fn().mockResolvedValue([]),
   },
   subscriptions: [],
-} as any;
+} as unknown as ExtensionContext;
 
 describe('provider: retry and streaming coverage', () => {
   let provider: MistralChatModelProvider;
@@ -66,38 +73,44 @@ describe('provider: retry and streaming coverage', () => {
 
   it('retries on transient 500 and then streams text', async () => {
     // Avoid hitting real fetchModels path
-    vi.spyOn(provider, 'fetchModels').mockResolvedValue([] as any);
+    vi.spyOn(provider, 'fetchModels').mockResolvedValue([] as MistralModel[]);
 
     const chatStreamMock = vi
       .fn()
       .mockRejectedValueOnce(new Error('500 Internal Server Error'))
       .mockResolvedValueOnce((async function* () {})());
 
-    (provider as any).client = { chat: { stream: chatStreamMock } };
+    (provider as unknown as { client: unknown }).client = { chat: { stream: chatStreamMock } };
 
     const reported: string[] = [];
-    const progress = { report: vi.fn() } as any;
-    const model = {
+    const progress = { report: vi.fn() };
+    const model: LanguageModelChatInformation = {
       id: 'mistral-large-latest',
       name: 'Mistral',
+      family: 'mistral',
       maxInputTokens: 1000,
       maxOutputTokens: 1000,
-    } as any;
-    const msgs = [
-      new LanguageModelChatMessage(LanguageModelChatMessageRole.User, [new LanguageModelTextPart('hi')]) as any,
+      version: '1.0',
+      capabilities: {
+        toolCalling: true,
+        imageInput: false,
+      },
+    };
+    const msgs: LanguageModelChatRequestMessage[] = [
+      new LanguageModelChatMessage(LanguageModelChatMessageRole.User, [new LanguageModelTextPart('hi')]),
     ];
 
     const p = provider.provideLanguageModelChatResponse(
       model,
-      msgs as any,
+      msgs,
       { toolMode: LanguageModelChatToolMode.Auto },
       // Renderer writes forward to progress via our mock
       {
-        report: (part: any) => {
-          if (part?.value) reported.push(part.value);
+        report: (part: LanguageModelResponsePart) => {
+          if (part instanceof LanguageModelTextPart) reported.push(part.value);
         },
-      } as any,
-      { isCancellationRequested: false } as any,
+      } as Progress<LanguageModelResponsePart>,
+      { isCancellationRequested: false } as CancellationToken,
     );
 
     // Advance fake timers so backoff delay resolves
@@ -109,24 +122,34 @@ describe('provider: retry and streaming coverage', () => {
   });
 
   it('does not retry on 401 Unauthorized and reports friendly message', async () => {
-    vi.spyOn(provider, 'fetchModels').mockResolvedValue([] as any);
+    vi.spyOn(provider, 'fetchModels').mockResolvedValue([] as MistralModel[]);
     const chatStreamMock = vi.fn().mockRejectedValue(new Error('401 Unauthorized'));
-    (provider as any).client = { chat: { stream: chatStreamMock } };
+    (provider as unknown as { client: unknown }).client = { chat: { stream: chatStreamMock } };
 
-    const progress = { report: vi.fn() } as any;
-    const model = { id: 'mistral-large-latest', name: 'M', maxInputTokens: 1, maxOutputTokens: 1 } as any;
+    const progress = { report: vi.fn() };
+    const model: LanguageModelChatInformation = {
+      id: 'mistral-large-latest',
+      name: 'M',
+      family: 'mistral',
+      maxInputTokens: 1,
+      maxOutputTokens: 1,
+      version: '1.0',
+      capabilities: { toolCalling: true, imageInput: false },
+    };
 
     await provider.provideLanguageModelChatResponse(
       model,
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('x')], name: undefined }] as any,
-      {},
-      progress,
-      { isCancellationRequested: false } as any,
+      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('x')], name: undefined }],
+      { toolMode: LanguageModelChatToolMode.Auto }, // Corrected missing toolMode
+      progress as Progress<LanguageModelResponsePart>, // Cast here for the function call
+      { isCancellationRequested: false } as CancellationToken,
     );
 
     expect(chatStreamMock).toHaveBeenCalledTimes(1);
-    const msg = progress.report.mock.calls.at(-1)?.[0]?.value as string | undefined;
-    expect(msg).toMatch(/api key/i);
+    const msg = (progress.report as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
+      | LanguageModelTextPart
+      | undefined;
+    expect(msg?.value).toMatch(/api key/i);
   });
 });
 
@@ -139,24 +162,36 @@ describe('provider: helpers coverage', () => {
 
   it('validateToolMessages strips orphan tool results', () => {
     const orphanResult = new LanguageModelToolResultPart('missing', [new LanguageModelTextPart('res')]);
-    const messages = [new LanguageModelChatMessage(LanguageModelChatMessageRole.User, [orphanResult]) as any];
-    const { valid, strippedToolCallCount } = (provider as any).validateToolMessages(messages);
+    const messages: LanguageModelChatRequestMessage[] = [
+      new LanguageModelChatMessage(LanguageModelChatMessageRole.User, [orphanResult]),
+    ];
+    const { valid, strippedToolCallCount } = (
+      provider as unknown as {
+        validateToolMessages(m: LanguageModelChatRequestMessage[]): {
+          valid: LanguageModelChatRequestMessage[];
+          strippedToolCallCount: number;
+        };
+      }
+    ).validateToolMessages(messages);
     expect(strippedToolCallCount).toBeGreaterThanOrEqual(1);
     expect(valid).toHaveLength(0);
   });
 
   it('selectModel falls back when none provided', () => {
-    const selected = (provider as any).selectModel(undefined, []);
+    const selected = (provider as unknown as { selectModel(m: unknown, ms: unknown[]): { id: string } }).selectModel(
+      undefined,
+      [],
+    );
     expect(selected).toBeDefined();
     expect(selected.id).toBeTruthy();
   });
 
   it('dispose frees tokenizer and clears state', () => {
     const free = vi.fn();
-    (provider as any).tokenizer = { free };
-    (provider as any).client = {};
+    (provider as unknown as { tokenizer: { free: () => void } | null }).tokenizer = { free };
+    (provider as unknown as { client: unknown }).client = null;
     provider.dispose();
     expect(free).toHaveBeenCalled();
-    expect((provider as any).client).toBeNull();
+    expect((provider as unknown as { client: unknown }).client).toBeNull();
   });
 });
