@@ -1061,14 +1061,7 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
     asyncIterable: AsyncIterable<unknown>,
     renderer: { writeChunk(chunk: unknown): Promise<void>; end(): Promise<void> },
     token: CancellationToken,
-    span: {
-      isRecording(): boolean;
-      addEvent(
-        eventName: string,
-        attributes?: Record<string, unknown> | Date | undefined,
-        startTime?: Date | undefined,
-      ): this;
-    },
+    span: unknown,
     startTime: number,
   ): Promise<number | undefined> {
     let ttft: number | undefined;
@@ -1083,8 +1076,18 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
       }
 
       await renderer.writeChunk(normalized.chunk);
-      if (span.isRecording()) {
-        span.addEvent('chunk_processed', { content_length: normalized.chunk.content?.length ?? 0 });
+      if (typeof span === 'object' && span !== null && 'isRecording' in span) {
+        const spanObj = span as {
+          isRecording(): boolean;
+          addEvent(
+            eventName: string,
+            attributes?: Record<string, unknown> | Date | undefined,
+            startTime?: Date | undefined,
+          ): unknown;
+        };
+        if (spanObj.isRecording()) {
+          spanObj.addEvent('chunk_processed', { content_length: normalized.chunk.content?.length ?? 0 });
+        }
       }
     }
 
