@@ -366,9 +366,11 @@ export class MistralChatModelProvider implements LanguageModelChatProvider {
    */
   public generateToolCallId(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const values = new Uint32Array(9);
+    globalThis.crypto.getRandomValues(values);
     let id = '';
     for (let i = 0; i < 9; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
+      id += chars[values[i] % chars.length];
     }
     return id;
   }

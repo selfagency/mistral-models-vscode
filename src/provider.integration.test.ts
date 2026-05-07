@@ -258,7 +258,13 @@ describe('Participant Streaming', () => {
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] }],
+      [
+        {
+          role: LanguageModelChatMessageRole.User,
+          content: [new LanguageModelTextPart('hi')],
+          name: undefined,
+        },
+      ],
       stream as unknown as ChatResponseStream,
       {
         isCancellationRequested: false,
@@ -275,7 +281,13 @@ describe('Participant Streaming', () => {
 
     await provider.streamParticipantResponse(
       'mistral-large-latest',
-      [{ role: LanguageModelChatMessageRole.User, content: [new LanguageModelTextPart('hi')] }],
+      [
+        {
+          role: LanguageModelChatMessageRole.User,
+          content: [new LanguageModelTextPart('hi')],
+          name: undefined,
+        },
+      ],
       stream as unknown as ChatResponseStream,
       {
         isCancellationRequested: true,

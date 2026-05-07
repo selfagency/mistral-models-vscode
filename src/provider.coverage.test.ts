@@ -83,7 +83,6 @@ describe('provider: retry and streaming coverage', () => {
     (provider as unknown as { client: unknown }).client = { chat: { stream: chatStreamMock } };
 
     const reported: string[] = [];
-    const progress = { report: vi.fn() };
     const model: LanguageModelChatInformation = {
       id: 'mistral-large-latest',
       name: 'Mistral',
